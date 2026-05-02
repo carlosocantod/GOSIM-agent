@@ -2,9 +2,11 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from src.config import APP_NAME
 
-"""
-# Welcome to Streamlit!
+
+f"""
+# Welcome to Streamlit for {APP_NAME}!
 
 Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:.
 If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
