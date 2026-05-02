@@ -1,0 +1,10 @@
+[project]
+name = "gosim-agent"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "altair>=6.1.0",
+    "pandas>=3.0.2",
+    "streamlit>=1.57.0",
+]
