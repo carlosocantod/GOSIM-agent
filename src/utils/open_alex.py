@@ -11,11 +11,15 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
-
 OPENALEX_BASE_URL = "https://api.openalex.org/works"
 
-OPEN_ALEX_KEY = os.getenv("OPEN_ALEX_KEY")
+
+def _get_api_key() -> str:
+    load_dotenv()
+    key = os.getenv("OPEN_ALEX_KEY")
+    if not key:
+        raise RuntimeError("OPEN_ALEX_KEY is not set in environment or .env file")
+    return key
 
 def reconstruct_abstract(abstract_inverted_index: dict[str, list[int]] | None) -> str | None:
     if not abstract_inverted_index:
@@ -72,7 +76,7 @@ def get_100_openalex_last_month(
             "sort": "publication_date:desc",
             "per-page": page_size,
             "cursor": cursor,
-            "api_key": OPEN_ALEX_KEY,
+            "api_key": _get_api_key(),
         }
 
         response = requests.get(OPENALEX_BASE_URL, params=params, headers=headers, timeout=30)
