@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import CountVectorizer
 
 # -----------------------------
 # Config
@@ -19,7 +20,7 @@ from sklearn.cluster import KMeans
 load_dotenv()
 
 K = int(os.getenv("TOPIC_MODEL_K", "12"))
-MAX_DOC_CHARS = int(os.getenv("TOPIC_MODEL_MAX_DOC_CHARS", "300"))
+MAX_DOC_CHARS = int(os.getenv("TOPIC_MODEL_MAX_DOC_CHARS", "1000"))
 EMBEDDING_MODEL_NAME = os.getenv("TOPIC_MODEL_EMBEDDING_MODEL", "sentence-transformers/paraphrase-MiniLM-L3-v2")
 
 
@@ -48,6 +49,14 @@ class TopicSummary(BaseModel):
 
 class TopicSummaries(BaseModel):
     summaries: List[TopicSummary]
+
+
+class TopicModelResult(BaseModel):
+    summaries: TopicSummaries
+    topic_assignments: List[int]
+    topic_model: object
+
+    model_config = {"arbitrary_types_allowed": True}
 
 
 # -----------------------------
@@ -157,14 +166,6 @@ def summarize_topics_with_pydantic(
     return TopicSummaries.model_validate_json(response.choices[0].message.content)
 
 
-class TopicModelResult(BaseModel):
-    summaries: TopicSummaries
-    topic_assignments: List[int]
-    topic_model: object
-
-    model_config = {"arbitrary_types_allowed": True}
-
-
 def run_topic_model(
     docs: List[str],
     client: OpenAI,
@@ -175,12 +176,29 @@ def run_topic_model(
 ) -> TopicModelResult:
 
     sbert_model = SentenceTransformer(embedding_model_name)
-    embeddings = sbert_model.encode(docs, show_progress_bar=True, normalize_embeddings=True)
+
+    embeddings = sbert_model.encode(
+        truncate_docs(
+            docs,
+            max_chars=max_doc_chars,
+        ),
+        show_progress_bar=True,
+        normalize_embeddings=True,
+    )
+
+    vectorizer_model = CountVectorizer(
+        stop_words="english",
+        ngram_range=(1, 3),
+        min_df=2,
+        max_df=0.9,
+        token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z\-]{2,}\b",
+    )
 
     topic_model = BERTopic(
         embedding_model=sbert_model,
         umap_model=BaseDimensionalityReduction(),
         hdbscan_model=KMeans(n_clusters=k, random_state=0, n_init="auto"),
+        vectorizer_model=vectorizer_model,
         calculate_probabilities=False,
         verbose=True,
     )

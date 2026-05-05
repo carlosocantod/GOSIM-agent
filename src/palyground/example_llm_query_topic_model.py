@@ -14,7 +14,7 @@ def main():
     client = OpenAI(base_url=os.getenv("URL_BASE"), api_key=os.getenv("LLM_API_KEY"))
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    result = extract_medical_keywords("What are the latest treatments for pediatric malaria?")
+    result = extract_medical_keywords("latest developments in malaria treatment")
     if not result.is_medical:
         print(MESSAGE_NOT_MEDICAL)
         return
@@ -25,6 +25,7 @@ def main():
 
     topic_result = run_topic_model(docs, client=client, model=model)
     print(topic_result.summaries.model_dump_json(indent=2))
+    df = topic_result.topic_model.get_topic_info()
 
 
 if __name__ == "__main__":
