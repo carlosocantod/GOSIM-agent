@@ -97,14 +97,14 @@ def extract_medical_keywords(query: str) -> MedicalQueryAnalysis:
 
 
 def main() -> None:
-    from src.utils.open_alex import get_200_openalex_last_months
+    from src.utils.open_alex import get_openalex_papers_last_months
 
     result = extract_medical_keywords("What are the latest treatments for pediatric malaria?")
     if not result.is_medical:
         print(MESSAGE_NOT_MEDICAL)
         return
     print(result.keywords)
-    query_results = get_200_openalex_last_months("OR ".join(result.keywords), limit=2)
+    query_results = get_openalex_papers_last_months("OR ".join(result.keywords), limit=2)
     print([q.title for q in query_results])
 
 

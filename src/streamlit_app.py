@@ -9,7 +9,7 @@ from src.utils.llm import MESSAGE_NOT_MEDICAL
 from src.utils.llm import MedicalQueryAnalysis
 from src.utils.llm import extract_medical_keywords
 from src.utils.open_alex import OpenAlexWork
-from src.utils.open_alex import get_200_openalex_last_months
+from src.utils.open_alex import get_openalex_papers_last_months
 from src.utils.topic_model_llm import TopicSummaries
 from src.utils.topic_model_llm import run_topic_model
 from src.utils.topic_model_llm import semantic_rerank
@@ -36,7 +36,7 @@ def _analyze_query(query: str) -> MedicalQueryAnalysis:
 @st.cache_data(show_spinner=False)
 def _fetch_papers(keywords: tuple[str, ...], query: str) -> tuple[List[OpenAlexWork], int, int]:
     search_query = " OR ".join(keywords)
-    docs = get_200_openalex_last_months(search_query, limit=500)
+    docs = get_openalex_papers_last_months(search_query, limit=500)
     fetched = len(docs)
     reranked = semantic_rerank(query, docs, top_n=200)
     return reranked, fetched, len(reranked)
