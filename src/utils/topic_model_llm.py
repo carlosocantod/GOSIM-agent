@@ -1,4 +1,5 @@
 import json
+import os
 from typing import List
 
 from bertopic import BERTopic
@@ -14,13 +15,16 @@ from sklearn.cluster import KMeans
 # Config
 # -----------------------------
 
-K = 15
+K = 12
 MAX_DOC_CHARS = 300
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L3-v2"
-OPENAI_MODEL = "gpt-4.1-mini"
 
 load_dotenv()
-client = OpenAI()
+client = OpenAI(
+    base_url=os.getenv("URL_BASE"),
+    api_key=os.getenv("LLM_API_KEY"),
+)
+OPENAI_MODEL = os.getenv("LLM_MODEL", "glm-5")
 
 
 # -----------------------------
@@ -81,26 +85,27 @@ def build_topics_payload(topic_model: BERTopic) -> List[TopicPayload]:
 def propose_merges(topics_payload: List[TopicPayload]) -> MergeTopics:
     system_prompt = """
     You are an expert topic modeler.
-    
+
     You are given topics with:
     - topic_id
     - top_words
     - representative documents
-    
+
     Your job:
     Group topics that are semantically similar and should be merged.
-    
+
     Rules:
-    - Output ONLY the requested structured object.
+    - Output ONLY a JSON object.
     - Each topic_id must appear at most once.
     - Do NOT include singletons.
     - Do NOT duplicate topic_ids across groups.
     - Only merge if clearly similar.
     - Prioritize merges of smaller, semantically overlapping topics.
     - Do not merge unrelated topics just to reduce the total number.
+    Schema: {"merges": [[int]]}
     """
 
-    response = client.chat.completions.parse(
+    response = client.chat.completions.create(
         model=OPENAI_MODEL,
         temperature=0,
         messages=[
@@ -113,10 +118,10 @@ def propose_merges(topics_payload: List[TopicPayload]) -> MergeTopics:
                 ),
             },
         ],
-        response_format=MergeTopics,
+        response_format={"type": "json_object"},
     )
 
-    return response.choices[0].message.parsed
+    return MergeTopics.model_validate_json(response.choices[0].message.content)
 
 
 def summarize_topics_with_pydantic(
@@ -124,19 +129,20 @@ def summarize_topics_with_pydantic(
 ) -> TopicSummaries:
     system_prompt = """
     You are an expert topic modeler.
-    
+
     Given topic keywords and representative documents, produce a concise topic label
     and summary for each topic.
-    
+
     Rules:
-    - Output ONLY the requested structured object.
+    - Output ONLY a JSON object.
     - Label should be short, ideally 3-7 words.
     - Summary should be 1-3 sentences.
     - Do not say "This topic is about".
     - Go straight to the point.
+    Schema: {"summaries": [{"topic_id": int, "label": str, "summary": str}]}
     """
 
-    response = client.chat.completions.parse(
+    response = client.chat.completions.create(
         model=OPENAI_MODEL,
         temperature=0,
         messages=[
@@ -149,10 +155,10 @@ def summarize_topics_with_pydantic(
                 ),
             },
         ],
-        response_format=TopicSummaries,
+        response_format={"type": "json_object"},
     )
 
-    return response.choices[0].message.parsed
+    return TopicSummaries.model_validate_json(response.choices[0].message.content)
 
 def main() -> None:
     from sklearn.datasets import fetch_20newsgroups
