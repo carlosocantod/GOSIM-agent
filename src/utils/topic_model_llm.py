@@ -176,11 +176,13 @@ def filter_relevant_topics(
     system_prompt = f"""
     The user asked: "{query}"
 
-    You are given a list of topics extracted from a set of documents retrieved for that query.
-    Some topics may be off-topic or only tangentially related.
+    You are given a list of topics extracted from a set of biomedical documents retrieved for that query.
+    Some topics may be entirely off-topic.
 
-    Your job: return only the topic_ids that are clearly relevant to the user's query.
-    Be strict — if a topic seems tangential or unrelated, exclude it.
+    Your job: return the topic_ids that are relevant or meaningfully related to the user's query.
+    Be inclusive — keep topics covering related biology, immunology, epidemiology, drug mechanisms,
+    or public health aspects even if not explicitly stated in the query.
+    Only exclude topics that are clearly unrelated (different disease area, unrelated field).
 
     Output ONLY a JSON object.
     Schema: {{"relevant_topic_ids": [int]}}
