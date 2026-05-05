@@ -174,7 +174,7 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
 
     render_centered_message(
         "info",
-        f"Fetched {fetched_count} papers → kept top {reranked_count} after semantic reranking → {len(docs_with_abstract)} with abstracts.",
+        f"Kept {reranked_count} of {fetched_count} papers after semantic reranking — relevant topics filtered next.",
     )
 
     with st.spinner("Running topic model — this may take a minute..."):
