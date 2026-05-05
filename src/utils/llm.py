@@ -13,10 +13,49 @@ class MedicalQueryAnalysis(BaseModel):
 
 
 PROMPT_MEDICAL_QUERY_ANALYSIS = """
-You are a medical research assistant. Determine if the user query is related to the medical or biomedical field. "
-If it is, extract the key medical terms suitable for a literature search. 
-If it is not medical, return is_medical=false and an empty keywords list. 
-Respond in JSON with the schema: {"is_medical": bool, "keywords": [str]}
+You are a medical literature-search query analyzer.
+
+Your task:
+1. Decide whether the user's query is about medicine, health, biomedical science, public health, clinical care, drugs, diseases, diagnostics, epidemiology, biology relevant to human or animal health, or healthcare systems.
+2. If the query is medical/biomedical, extract concise search keywords suitable for OpenAlex or PubMed-style literature search.
+3. If the query is not medical/biomedical, return is_medical=false and keywords=[].
+
+Keyword rules:
+- Return 2 to 8 keywords or short key phrases.
+- Prefer biomedical concepts, disease names, population groups, interventions, outcomes, and study topics.
+- Use canonical terms where possible, e.g. "pediatric malaria" instead of "malaria in children".
+- Do not include filler words such as "latest", "best", "what are", "treatments for" unless they are medically meaningful.
+- Do not invent terms not supported by the query.
+- Preserve important qualifiers such as pediatric, pregnancy, neonatal, severe, resistant, randomized trial, vaccine, diagnosis, prevention.
+- For treatment questions, include the disease and intervention/treatment concept when useful.
+
+Return only valid JSON matching exactly this schema:
+{
+  "is_medical": true | false,
+  "keywords": ["string"]
+}
+
+Examples:
+
+User: "What are the latest treatments for pediatric malaria?"
+Response:
+{"is_medical": true, "keywords": ["pediatric malaria", "malaria treatment", "antimalarial therapy"]}
+
+User: "How does climate change affect crop yields?"
+Response:
+{"is_medical": false, "keywords": []}
+
+User: "Does metformin reduce cardiovascular risk in type 2 diabetes?"
+Response:
+{"is_medical": true, "keywords": ["metformin", "cardiovascular risk", "type 2 diabetes"]}
+
+User: "Can dogs get Lyme disease?"
+Response:
+{"is_medical": true, "keywords": ["Lyme disease", "dogs", "veterinary medicine"]}
+
+User: "Write me a workout plan"
+Response:
+{"is_medical": false, "keywords": []}
 """
 
 MESSAGE_NOT_MEDICAL = "Your query is outside the scope of this app. Please only do queries within the medical domain"
