@@ -262,14 +262,7 @@ def run_query(query: str) -> None:
             url_base=url_base, api_key=api_key, model=model, query=query,
         )
 
-    curr_relevant_ids = {s.topic_id for s in curr_summaries.summaries}
-    curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
-    st.subheader(f"Current period: {current_label}")
-    st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
-    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract, key_prefix="curr")
-
     # --- Step 2: previous period fetch + topic model ---
-    st.divider()
     with st.spinner(f"Fetching papers for previous period ({previous_label})..."):
         prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
         prev_with_abstract = [d for d in prev_docs if d.abstract]
@@ -283,7 +276,7 @@ def run_query(query: str) -> None:
     else:
         prev_summaries, prev_assignments = TopicSummaries(summaries=[]), []
 
-    # --- Step 3: compare and display ---
+    # --- Step 3: compare, then display everything ---
     with st.spinner("Comparing periods..."):
         comparison_json = _compare_periods(
             curr_summaries.model_dump_json(),
@@ -294,10 +287,16 @@ def run_query(query: str) -> None:
         )
         comparison = PeriodComparison.model_validate_json(comparison_json)
 
-    # Badge emerging topics on current period — re-render with badges now that we know them
     emerging = set(comparison.emerging_topic_labels)
     disappeared = set(comparison.disappeared_topic_labels)
 
+    curr_relevant_ids = {s.topic_id for s in curr_summaries.summaries}
+    curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
+    st.subheader(f"Current period: {current_label}")
+    st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
+    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract, key_prefix="curr", emerging_labels=emerging)
+
+    st.divider()
     st.subheader(f"How does this compare to the previous period ({previous_label})?")
     st.info(comparison.narrative)
     if disappeared:
