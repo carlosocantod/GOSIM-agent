@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
 from pydantic import Field
+from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 
 # -----------------------------
@@ -160,6 +161,34 @@ def summarize_topics_with_pydantic(
 
     return TopicSummaries.model_validate_json(response.choices[0].message.content)
 
+
+def run_topic_model(
+    docs: List[str],
+    k: int = K,
+    embedding_model_name: str = EMBEDDING_MODEL_NAME,
+    max_doc_chars: int = MAX_DOC_CHARS,
+) -> TopicSummaries:
+
+    sbert_model = SentenceTransformer(embedding_model_name)
+    embeddings = sbert_model.encode(docs, show_progress_bar=True, normalize_embeddings=True)
+
+    topic_model = BERTopic(
+        embedding_model=sbert_model,
+        umap_model=BaseDimensionalityReduction(),
+        hdbscan_model=KMeans(n_clusters=k, random_state=0, n_init="auto"),
+        calculate_probabilities=False,
+        verbose=True,
+    )
+    topic_model.fit_transform(docs, embeddings=embeddings)
+
+    payload = build_topics_payload(topic_model)
+    merges = propose_merges(payload)
+    if merges.merges:
+        topic_model.merge_topics(docs, merges.merges)
+
+    return summarize_topics_with_pydantic(build_topics_payload(topic_model))
+
+
 def main() -> None:
     from sklearn.datasets import fetch_20newsgroups
     from sentence_transformers import SentenceTransformer
@@ -240,7 +269,6 @@ def main() -> None:
     topic_summaries = summarize_topics_with_pydantic(merged_payload)
 
     print(topic_summaries.model_dump_json(indent=2))
-
 
     # -----------------------------
     # 7. Optional: also update BERTopic representations
