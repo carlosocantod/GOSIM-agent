@@ -66,9 +66,9 @@ def normalize_doi(raw_doi: str | None) -> str | None:
     return raw_doi.removeprefix("https://doi.org/")
 
 
-def get_100_openalex_last_months(
+def get_200_openalex_last_months(
     keywords: str,
-    limit: int = 100,
+    limit: int = 200,
     mailto: str | None = None,
     n_months: int = 3,
 ) -> list[OpenAlexWork]:
@@ -79,7 +79,7 @@ def get_100_openalex_last_months(
 
     collected: list[dict[str, Any]] = []
     cursor = "*"
-    page_size = min(limit, 100)
+    page_size = min(limit, 200)
 
     while len(collected) < limit:
         params = {
@@ -128,7 +128,7 @@ def get_100_openalex_last_months(
     return collected[:limit]
 
 def main():
-    results = get_100_openalex_last_months(keywords="pediatrics malaria")
+    results = get_200_openalex_last_months(keywords="pediatrics malaria")
     print(1)
 
 if __name__ == "__main__":
