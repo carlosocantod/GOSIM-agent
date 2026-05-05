@@ -22,13 +22,27 @@ Your task:
 
 Keyword rules:
 - Return 2 to 8 keywords or short key phrases.
-- Prefer biomedical concepts, disease names, population groups, interventions, outcomes, and study topics.
-- Use canonical terms where possible, e.g. "pediatric malaria" instead of "malaria in children".
-- Do not include filler words such as "latest", "best", "what are", "treatments for" unless they are medically meaningful.
-- Do not invent terms not supported by the query.
-- Preserve important qualifiers such as pediatric, pregnancy, neonatal, severe, resistant, randomized trial, vaccine, diagnosis, prevention.
-- For treatment questions, include the disease and intervention/treatment concept when useful.
+- Each keyword must be independently meaningful as a biomedical literature search query.
+- Every keyword must include or be anchored to a biomedical concept (e.g., disease, drug, population, outcome, intervention, diagnostic, or biological process).
+- Standalone geographic, demographic, temporal, or generic context terms are NOT allowed (e.g., "Latin America", "children", "2020", "hospital").
+- If context such as geography or population is important, it must be combined with a biomedical concept:
+  - Good: "dengue Latin America", "pediatric malaria", "cancer survival Europe"
+  - Bad: "Latin America", "children", "Europe"
+- Prefer canonical biomedical phrasing:
+  - "pediatric malaria" instead of "malaria in children"
+  - "type 2 diabetes" instead of "diabetes type II"
+- Include both condition and intervention when relevant:
+  - e.g., "metformin type 2 diabetes", "malaria vaccine efficacy"
+- Preserve important qualifiers such as:
+  - population (pediatric, neonatal, elderly)
+  - severity (severe, resistant)
+  - study type (randomized trial, cohort study)
+  - purpose (diagnosis, treatment, prevention)
+- Avoid filler or vague terms:
+  - Do NOT include "latest", "best", "what are", etc.
+- Do NOT invent concepts not supported by the query.
 
+Output format:
 Return only valid JSON matching exactly this schema:
 {
   "is_medical": true | false,
@@ -47,15 +61,19 @@ Response:
 
 User: "Does metformin reduce cardiovascular risk in type 2 diabetes?"
 Response:
-{"is_medical": true, "keywords": ["metformin", "cardiovascular risk", "type 2 diabetes"]}
+{"is_medical": true, "keywords": ["metformin type 2 diabetes", "cardiovascular risk diabetes", "metformin cardiovascular outcomes"]}
 
 User: "Can dogs get Lyme disease?"
 Response:
-{"is_medical": true, "keywords": ["Lyme disease", "dogs", "veterinary medicine"]}
+{"is_medical": true, "keywords": ["Lyme disease dogs", "canine Lyme disease", "veterinary Lyme disease"]}
 
 User: "Write me a workout plan"
 Response:
 {"is_medical": false, "keywords": []}
+
+User: "Epidemiology of dengue and malaria in Latin America"
+Response:
+{"is_medical": true, "keywords": ["dengue epidemiology Latin America", "malaria epidemiology Latin America", "dengue malaria epidemiology"]}
 """
 
 MESSAGE_NOT_MEDICAL = "Your query is outside the scope of this app. Please only do queries within the medical domain"
