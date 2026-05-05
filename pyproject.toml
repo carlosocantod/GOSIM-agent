@@ -5,8 +5,11 @@ description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
     "altair>=6.1.0",
+    "bertopic>=0.17.4",
     "load-dotenv>=0.1.0",
     "openai>=2.34.0",
     "pandas>=3.0.2",
+    "scikit-learn>=1.8.0",
+    "sentence-transformers>=5.4.1",
     "streamlit>=1.57.0",
 ]
