@@ -41,12 +41,14 @@ def reconstruct_abstract(abstract_inverted_index: dict[str, list[int]] | None) -
     return " ".join(w for w in words if w).strip() or None
 
 
-def last_month_date_range(today: date | None = None) -> tuple[str, str]:
+def last_n_months_date_range(n_months: int = 3, today: date | None = None) -> tuple[str, str]:
     today = today or date.today()
     first_of_this_month = today.replace(day=1)
-    last_of_prev_month = first_of_this_month - timedelta(days=1)
-    first_of_prev_month = last_of_prev_month.replace(day=1)
-    return first_of_prev_month.isoformat(), last_of_prev_month.isoformat()
+    last_day = first_of_this_month - timedelta(days=1)
+    first_day = last_day.replace(day=1)
+    for _ in range(n_months - 1):
+        first_day = (first_day - timedelta(days=1)).replace(day=1)
+    return first_day.isoformat(), last_day.isoformat()
 
 
 def normalize_doi(raw_doi: str | None) -> str | None:
@@ -55,12 +57,13 @@ def normalize_doi(raw_doi: str | None) -> str | None:
     return raw_doi.removeprefix("https://doi.org/")
 
 
-def get_100_openalex_last_month(
+def get_100_openalex_last_months(
     keywords: str,
     limit: int = 100,
     mailto: str | None = None,
+    n_months: int = 3,
 ) -> list[dict[str, Any]]:
-    from_date, to_date = last_month_date_range()
+    from_date, to_date = last_n_months_date_range(n_months=n_months)
     headers = {
         "User-Agent": f"openalex-keyword-script/1.0 ({mailto})" if mailto else "openalex-keyword-script/1.0"
     }
@@ -88,6 +91,8 @@ def get_100_openalex_last_month(
             break
 
         for work in works:
+            if work.get("language") != "en":
+                continue
             collected.append(
                 {
                     "doi": normalize_doi(((work.get("ids") or {}).get("doi"))),
@@ -108,8 +113,7 @@ def get_100_openalex_last_month(
     return collected[:limit]
 
 def main():
-    get_100_openalex_last_month(keywords="pediatrics malaria")
-
+    results = get_100_openalex_last_months(keywords="pediatrics malaria")
 
 if __name__ == "__main__":
     main()
