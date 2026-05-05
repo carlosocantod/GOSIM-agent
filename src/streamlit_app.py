@@ -172,11 +172,6 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
         render_centered_message("warning", "No abstracts found. Try broadening your search.")
         return None
 
-    render_centered_message(
-        "info",
-        f"Kept {reranked_count} of {fetched_count} papers after semantic reranking — relevant topics filtered next.",
-    )
-
     with st.spinner("Running topic model — this may take a minute..."):
         abstracts = tuple(doc.abstract for doc in docs_with_abstract)
 
@@ -187,6 +182,13 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
             model=os.getenv("LLM_MODEL", "glm-5"),
             query=query,
         )
+
+    relevant_topic_ids = {s.topic_id for s in summaries.summaries}
+    docs_in_relevant_topics = sum(1 for a in assignments if a in relevant_topic_ids)
+    render_centered_message(
+        "info",
+        f"Kept {reranked_count} of {fetched_count} papers after semantic reranking — {docs_in_relevant_topics} in relevant topics.",
+    )
 
     return summaries, assignments, docs_with_abstract
 
