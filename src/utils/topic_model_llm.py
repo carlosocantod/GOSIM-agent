@@ -16,16 +16,11 @@ from sklearn.cluster import KMeans
 # Config
 # -----------------------------
 
-K = 12
-MAX_DOC_CHARS = 300
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L3-v2"
-
 load_dotenv()
-client = OpenAI(
-    base_url=os.getenv("URL_BASE"),
-    api_key=os.getenv("LLM_API_KEY"),
-)
-OPENAI_MODEL = os.getenv("LLM_MODEL", "glm-5")
+
+K = int(os.getenv("TOPIC_MODEL_K", "12"))
+MAX_DOC_CHARS = int(os.getenv("TOPIC_MODEL_MAX_DOC_CHARS", "300"))
+EMBEDDING_MODEL_NAME = os.getenv("TOPIC_MODEL_EMBEDDING_MODEL", "sentence-transformers/paraphrase-MiniLM-L3-v2")
 
 
 # -----------------------------
@@ -83,7 +78,7 @@ def build_topics_payload(topic_model: BERTopic) -> List[TopicPayload]:
     return payload
 
 
-def propose_merges(topics_payload: List[TopicPayload]) -> MergeTopics:
+def propose_merges(topics_payload: List[TopicPayload], client: OpenAI, model: str) -> MergeTopics:
     system_prompt = """
     You are an expert topic modeler.
 
@@ -107,7 +102,7 @@ def propose_merges(topics_payload: List[TopicPayload]) -> MergeTopics:
     """
 
     response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=model,
         temperature=0,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -126,7 +121,7 @@ def propose_merges(topics_payload: List[TopicPayload]) -> MergeTopics:
 
 
 def summarize_topics_with_pydantic(
-    topics_payload: List[TopicPayload],
+    topics_payload: List[TopicPayload], client: OpenAI, model: str,
 ) -> TopicSummaries:
     system_prompt = """
     You are an expert topic modeler.
@@ -144,7 +139,7 @@ def summarize_topics_with_pydantic(
     """
 
     response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=model,
         temperature=0,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -172,6 +167,8 @@ class TopicModelResult(BaseModel):
 
 def run_topic_model(
     docs: List[str],
+    client: OpenAI,
+    model: str,
     k: int = K,
     embedding_model_name: str = EMBEDDING_MODEL_NAME,
     max_doc_chars: int = MAX_DOC_CHARS,
@@ -190,12 +187,12 @@ def run_topic_model(
     assignments, _ = topic_model.fit_transform(docs, embeddings=embeddings)
 
     payload = build_topics_payload(topic_model)
-    merges = propose_merges(payload)
+    merges = propose_merges(payload, client, model)
     if merges.merges:
         topic_model.merge_topics(docs, merges.merges)
         assignments = topic_model.topics_
 
-    summaries = summarize_topics_with_pydantic(build_topics_payload(topic_model))
+    summaries = summarize_topics_with_pydantic(build_topics_payload(topic_model), client, model)
     return TopicModelResult(summaries=summaries, topic_assignments=assignments, topic_model=topic_model)
 
 
@@ -299,10 +296,11 @@ def main() -> None:
     - Go straight to the point.
     - Use 2-3 sentences max.
     """
-
+    client = OpenAI(base_url=os.getenv("URL_BASE"), api_key=os.getenv("LLM_API_KEY"))
+    model = os.getenv("LLM_MODEL", "glm-5")
     representation_model = OpenAIBertTopic(
         client,
-        model=OPENAI_MODEL,
+        model=model,
         prompt=summarization_prompt,
     )
 
