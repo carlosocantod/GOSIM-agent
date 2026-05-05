@@ -216,17 +216,16 @@ def filter_relevant_topics(
 def semantic_rerank(
     query: str,
     docs: "List[OpenAlexWork]",
+    embedding_model: SentenceTransformer,
     top_n: int = 200,
-    embedding_model_name: str = EMBEDDING_MODEL_NAME,
 ) -> "List[OpenAlexWork]":
     if len(docs) <= top_n:
         return docs
 
-    model = SentenceTransformer(embedding_model_name)
     texts = [doc.abstract or doc.title or "" for doc in docs]
 
-    query_emb = model.encode([query], normalize_embeddings=True)
-    doc_embs = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    query_emb = embedding_model.encode([query], normalize_embeddings=True)
+    doc_embs = embedding_model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
     scores = (doc_embs @ query_emb.T).squeeze()
     top_indices = np.argsort(scores)[::-1][:top_n]
@@ -237,15 +236,13 @@ def run_topic_model(
     docs: List[str],
     client: OpenAI,
     model: str,
+    embedding_model: SentenceTransformer,
     query: str | None = None,
     k: int = K,
-    embedding_model_name: str = EMBEDDING_MODEL_NAME,
     max_doc_chars: int = MAX_DOC_CHARS,
 ) -> TopicModelResult:
 
-    sbert_model = SentenceTransformer(embedding_model_name)
-
-    embeddings = sbert_model.encode(
+    embeddings = embedding_model.encode(
         truncate_docs(
             docs,
             max_chars=max_doc_chars,
@@ -263,7 +260,7 @@ def run_topic_model(
     )
 
     topic_model = BERTopic(
-        embedding_model=sbert_model,
+        embedding_model=embedding_model,
         umap_model=BaseDimensionalityReduction(),
         hdbscan_model=KMeans(n_clusters=k, random_state=0, n_init="auto"),
         vectorizer_model=vectorizer_model,
