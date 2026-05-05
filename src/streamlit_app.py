@@ -10,6 +10,9 @@ from src.utils.llm import MedicalQueryAnalysis
 from src.utils.llm import extract_medical_keywords
 from src.utils.open_alex import OpenAlexWork
 from src.utils.open_alex import get_openalex_papers_last_months
+from sentence_transformers import SentenceTransformer
+
+from src.utils.topic_model_llm import EMBEDDING_MODEL_NAME
 from src.utils.topic_model_llm import TopicSummaries
 from src.utils.topic_model_llm import run_topic_model
 from src.utils.topic_model_llm import semantic_rerank
@@ -28,6 +31,11 @@ if "results" not in st.session_state:
 # Cached lightweight / serializable steps
 # ------------------------------------------------------------------
 
+@st.cache_resource(show_spinner="Loading embedding model...")
+def _load_sbert_model() -> SentenceTransformer:
+    return SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+
 @st.cache_data(show_spinner=False)
 def _analyze_query(query: str) -> MedicalQueryAnalysis:
     return extract_medical_keywords(query)
@@ -35,10 +43,12 @@ def _analyze_query(query: str) -> MedicalQueryAnalysis:
 
 @st.cache_data(show_spinner=False)
 def _fetch_papers(keywords: tuple[str, ...], query: str) -> tuple[List[OpenAlexWork], int, int]:
-    search_query = " OR ".join(keywords)
-    docs = get_openalex_papers_last_months(search_query, limit=500)
+    # Use the original query for OpenAlex search — long OR-joined keyword strings
+    # confuse OpenAlex's relevance model and return far fewer results than a
+    # natural-language query does. Semantic reranking handles keyword-level filtering.
+    docs = get_openalex_papers_last_months(query, limit=500)
     fetched = len(docs)
-    reranked = semantic_rerank(query, docs, top_n=200)
+    reranked = semantic_rerank(query, docs, embedding_model=_load_sbert_model(), top_n=200)
     return reranked, fetched, len(reranked)
 
 
@@ -50,7 +60,13 @@ def _run_pipeline(
     query: str,
 ) -> tuple[TopicSummaries, List[int]]:
     client = OpenAI(base_url=url_base, api_key=api_key)
-    result = run_topic_model(list(abstracts), client=client, model=model, query=query)
+    result = run_topic_model(
+        list(abstracts),
+        client=client,
+        model=model,
+        embedding_model=_load_sbert_model(),
+        query=query,
+    )
     return result.summaries, result.topic_assignments
 
 
@@ -160,7 +176,7 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
 
     render_centered_message(
         "info",
-        f"Fetched {fetched_count} papers → kept top {reranked_count} after semantic reranking → {len(docs_with_abstract)} with abstracts.",
+        f"Kept {reranked_count} of {fetched_count} papers after semantic reranking — relevant topics filtered next.",
     )
 
     with st.spinner("Running topic model — this may take a minute..."):
