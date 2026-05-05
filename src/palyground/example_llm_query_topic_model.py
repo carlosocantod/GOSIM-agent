@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.utils.llm import MESSAGE_NOT_MEDICAL, extract_medical_keywords
-from src.utils.open_alex import get_200_openalex_last_months
+from src.utils.open_alex import get_openalex_papers_last_months
 from src.utils.topic_model_llm import run_topic_model
 
 load_dotenv()
@@ -19,7 +19,7 @@ def main():
         print(MESSAGE_NOT_MEDICAL)
         return
 
-    docs_raw = get_200_openalex_last_months(" OR ".join(result.keywords), limit=200)
+    docs_raw = get_openalex_papers_last_months(" OR ".join(result.keywords), limit=200)
     docs = [d.abstract for d in docs_raw if d.abstract]
     print(f"Fetched {len(docs)} abstracts")
 

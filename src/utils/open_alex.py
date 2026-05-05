@@ -66,7 +66,7 @@ def normalize_doi(raw_doi: str | None) -> str | None:
     return raw_doi.removeprefix("https://doi.org/")
 
 
-def get_200_openalex_last_months(
+def get_openalex_papers_last_months(
     keywords: str,
     limit: int = 200,
     mailto: str | None = None,
@@ -128,7 +128,7 @@ def get_200_openalex_last_months(
     return collected[:limit]
 
 def main():
-    results = get_200_openalex_last_months(keywords="pediatrics malaria")
+    results = get_openalex_papers_last_months(keywords="pediatrics malaria")
     print(1)
 
 if __name__ == "__main__":
