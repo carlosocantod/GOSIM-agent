@@ -150,6 +150,7 @@ def render_topic_dashboard(
     summaries: TopicSummaries,
     assignments: List[int],
     docs: List[OpenAlexWork],
+    key_prefix: str = "curr",
     emerging_labels: set[str] | None = None,
 ) -> None:
     cols = st.columns(2)
@@ -165,7 +166,7 @@ def render_topic_dashboard(
         label_display = f"🆕 {summary.label}" if is_emerging else summary.label
 
         with cols[idx % 2]:
-            show_key = f"docs_{summary.topic_id}"
+            show_key = f"{key_prefix}_docs_{summary.topic_id}"
             showing_papers = st.session_state.get(show_key, False)
 
             with st.expander(f"**{label_display}** — {len(topic_docs)} papers", expanded=showing_papers):
@@ -202,7 +203,7 @@ def render_period_comparison(
     relevant_topic_ids = {s.topic_id for s in current_summaries.summaries}
     docs_in_relevant = sum(1 for a in current_assignments if a in relevant_topic_ids)
     st.caption(f"{docs_in_relevant} papers across {len(current_summaries.summaries)} topics")
-    render_topic_dashboard(current_summaries, current_assignments, current_docs, emerging_labels=emerging)
+    render_topic_dashboard(current_summaries, current_assignments, current_docs, key_prefix="curr", emerging_labels=emerging)
 
     # Comparison narrative
     st.divider()
@@ -217,7 +218,7 @@ def render_period_comparison(
         prev_relevant_ids = {s.topic_id for s in previous_summaries.summaries}
         prev_docs_count = sum(1 for a in previous_assignments if a in prev_relevant_ids)
         st.caption(f"{prev_docs_count} papers across {len(previous_summaries.summaries)} topics")
-        render_topic_dashboard(previous_summaries, previous_assignments, previous_docs)
+        render_topic_dashboard(previous_summaries, previous_assignments, previous_docs, key_prefix="prev")
 
 
 # ------------------------------------------------------------------
@@ -265,7 +266,7 @@ def run_query(query: str) -> None:
     curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
     st.subheader(f"Current period: {current_label}")
     st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
-    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract)
+    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract, key_prefix="curr")
 
     # --- Step 2: previous period fetch + topic model ---
     st.divider()
@@ -307,7 +308,7 @@ def run_query(query: str) -> None:
             prev_relevant_ids = {s.topic_id for s in prev_summaries.summaries}
             prev_docs_count = sum(1 for a in prev_assignments if a in prev_relevant_ids)
             st.caption(f"{prev_docs_count} papers across {len(prev_summaries.summaries)} topics")
-            render_topic_dashboard(prev_summaries, prev_assignments, prev_with_abstract)
+            render_topic_dashboard(prev_summaries, prev_assignments, prev_with_abstract, key_prefix="prev")
         else:
             st.caption("No data for previous period.")
 
