@@ -1,7 +1,8 @@
 import json
 import os
-from typing import List
+from typing import List, TYPE_CHECKING
 
+import numpy as np
 from bertopic import BERTopic
 from bertopic.dimensionality import BaseDimensionalityReduction
 from bertopic.representation import OpenAI as OpenAIBertTopic
@@ -12,6 +13,9 @@ from pydantic import Field
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import CountVectorizer
+
+if TYPE_CHECKING:
+    from src.utils.open_alex import OpenAlexWork
 
 # -----------------------------
 # Config
@@ -205,6 +209,26 @@ def filter_relevant_topics(
     result = RelevantTopics.model_validate_json(response.choices[0].message.content)
     relevant_ids = set(result.relevant_topic_ids)
     return [t for t in topics_payload if t.topic_id in relevant_ids]
+
+
+def semantic_rerank(
+    query: str,
+    docs: "List[OpenAlexWork]",
+    top_n: int = 200,
+    embedding_model_name: str = EMBEDDING_MODEL_NAME,
+) -> "List[OpenAlexWork]":
+    if len(docs) <= top_n:
+        return docs
+
+    model = SentenceTransformer(embedding_model_name)
+    texts = [doc.abstract or doc.title or "" for doc in docs]
+
+    query_emb = model.encode([query], normalize_embeddings=True)
+    doc_embs = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+
+    scores = (doc_embs @ query_emb.T).squeeze()
+    top_indices = np.argsort(scores)[::-1][:top_n]
+    return [docs[i] for i in top_indices]
 
 
 def run_topic_model(

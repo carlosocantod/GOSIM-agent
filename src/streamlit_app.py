@@ -12,6 +12,7 @@ from src.utils.open_alex import OpenAlexWork
 from src.utils.open_alex import get_200_openalex_last_months
 from src.utils.topic_model_llm import TopicSummaries
 from src.utils.topic_model_llm import run_topic_model
+from src.utils.topic_model_llm import semantic_rerank
 
 load_dotenv()
 
@@ -33,9 +34,10 @@ def _analyze_query(query: str) -> MedicalQueryAnalysis:
 
 
 @st.cache_data(show_spinner=False)
-def _fetch_papers(keywords: tuple[str, ...]) -> List[OpenAlexWork]:
+def _fetch_papers(keywords: tuple[str, ...], query: str) -> List[OpenAlexWork]:
     search_query = " OR ".join(keywords)
-    return get_200_openalex_last_months(search_query, limit=200)
+    docs = get_200_openalex_last_months(search_query, limit=500)
+    return semantic_rerank(query, docs, top_n=200)
 
 
 def _run_pipeline(
@@ -147,7 +149,7 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
     )
 
     with st.spinner("Fetching papers from OpenAlex..."):
-        all_docs = _fetch_papers(tuple(analysis.keywords))
+        all_docs = _fetch_papers(tuple(analysis.keywords), query=query)
         docs_with_abstract = [doc for doc in all_docs if doc.abstract]
 
     if not docs_with_abstract:
