@@ -162,12 +162,20 @@ def summarize_topics_with_pydantic(
     return TopicSummaries.model_validate_json(response.choices[0].message.content)
 
 
+class TopicModelResult(BaseModel):
+    summaries: TopicSummaries
+    topic_assignments: List[int]
+    topic_model: object
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
 def run_topic_model(
     docs: List[str],
     k: int = K,
     embedding_model_name: str = EMBEDDING_MODEL_NAME,
     max_doc_chars: int = MAX_DOC_CHARS,
-) -> TopicSummaries:
+) -> TopicModelResult:
 
     sbert_model = SentenceTransformer(embedding_model_name)
     embeddings = sbert_model.encode(docs, show_progress_bar=True, normalize_embeddings=True)
@@ -179,14 +187,16 @@ def run_topic_model(
         calculate_probabilities=False,
         verbose=True,
     )
-    topic_model.fit_transform(docs, embeddings=embeddings)
+    assignments, _ = topic_model.fit_transform(docs, embeddings=embeddings)
 
     payload = build_topics_payload(topic_model)
     merges = propose_merges(payload)
     if merges.merges:
         topic_model.merge_topics(docs, merges.merges)
+        assignments = topic_model.topics_
 
-    return summarize_topics_with_pydantic(build_topics_payload(topic_model))
+    summaries = summarize_topics_with_pydantic(build_topics_payload(topic_model))
+    return TopicModelResult(summaries=summaries, topic_assignments=assignments, topic_model=topic_model)
 
 
 def main() -> None:
