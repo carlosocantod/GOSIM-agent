@@ -10,9 +10,18 @@ from typing import Any
 
 import requests
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from pydantic import Field
+
+
+class OpenAlexWork(BaseModel):
+    doi: str
+    abstract: str
+    publication_date: str | None = Field(default=None)
+    title: str | None = Field(default=None)
+
 
 OPENALEX_BASE_URL = "https://api.openalex.org/works"
-
 
 def _get_api_key() -> str:
     load_dotenv()
@@ -62,7 +71,7 @@ def get_100_openalex_last_months(
     limit: int = 100,
     mailto: str | None = None,
     n_months: int = 3,
-) -> list[dict[str, Any]]:
+) -> list[OpenAlexWork]:
     from_date, to_date = last_n_months_date_range(n_months=n_months)
     headers = {
         "User-Agent": f"openalex-keyword-script/1.0 ({mailto})" if mailto else "openalex-keyword-script/1.0"
@@ -93,17 +102,23 @@ def get_100_openalex_last_months(
         for work in works:
             if work.get("language") != "en":
                 continue
+
+            doi = normalize_doi((work.get("ids") or {}).get("doi"))
+            abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
+            if not doi or not abstract:
+                continue
+
             collected.append(
-                {
-                    "doi": normalize_doi(((work.get("ids") or {}).get("doi"))),
-                    "publication_date": work.get("publication_date"),
-                    "title": work.get("display_name"),
-                    "abstract": reconstruct_abstract(work.get("abstract_inverted_index")),
-                }
+                OpenAlexWork(
+                    doi=doi,
+                    publication_date=work.get("publication_date"),
+                    title=work.get("display_name"),
+                    abstract=abstract,
+                )
             )
+
             if len(collected) >= limit:
                 break
-
         meta = payload.get("meta", {})
         next_cursor = meta.get("next_cursor")
         if not next_cursor or next_cursor == cursor:
@@ -114,6 +129,7 @@ def get_100_openalex_last_months(
 
 def main():
     results = get_100_openalex_last_months(keywords="pediatrics malaria")
+    print(1)
 
 if __name__ == "__main__":
     main()
