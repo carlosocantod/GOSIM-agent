@@ -34,10 +34,12 @@ def _analyze_query(query: str) -> MedicalQueryAnalysis:
 
 
 @st.cache_data(show_spinner=False)
-def _fetch_papers(keywords: tuple[str, ...], query: str) -> List[OpenAlexWork]:
+def _fetch_papers(keywords: tuple[str, ...], query: str) -> tuple[List[OpenAlexWork], int, int]:
     search_query = " OR ".join(keywords)
     docs = get_200_openalex_last_months(search_query, limit=500)
-    return semantic_rerank(query, docs, top_n=200)
+    fetched = len(docs)
+    reranked = semantic_rerank(query, docs, top_n=200)
+    return reranked, fetched, len(reranked)
 
 
 def _run_pipeline(
@@ -149,19 +151,16 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
     )
 
     with st.spinner("Fetching papers from OpenAlex..."):
-        all_docs = _fetch_papers(tuple(analysis.keywords), query=query)
+        all_docs, fetched_count, reranked_count = _fetch_papers(tuple(analysis.keywords), query=query)
         docs_with_abstract = [doc for doc in all_docs if doc.abstract]
 
     if not docs_with_abstract:
-        render_centered_message(
-            "warning",
-            "No abstracts found. Try broadening your search.",
-        )
+        render_centered_message("warning", "No abstracts found. Try broadening your search.")
         return None
 
     render_centered_message(
         "info",
-        f"Found {len(docs_with_abstract)} papers with abstracts.",
+        f"Fetched {fetched_count} papers → kept top {reranked_count} after semantic reranking → {len(docs_with_abstract)} with abstracts.",
     )
 
     with st.spinner("Running topic model — this may take a minute..."):
