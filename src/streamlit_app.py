@@ -109,26 +109,22 @@ def render_topic_dashboard(
         ]
 
         with cols[idx % 2]:
-            with st.expander(f"**{summary.label}** — {len(topic_docs)} papers"):
+            show_key = f"docs_{summary.topic_id}"
+            showing_papers = st.session_state.get(show_key, False)
+
+            with st.expander(f"**{summary.label}** — {len(topic_docs)} papers", expanded=showing_papers):
                 st.markdown(summary.summary)
-                st.markdown(f"*{len(topic_docs)} papers in this topic*")
+                st.toggle("Show papers", key=show_key)
 
-                show = st.toggle(
-                    "Show papers",
-                    key=f"docs_{summary.topic_id}",
-                )
-
-                if show:
+                if st.session_state.get(show_key, False):
+                    st.divider()
                     for doc in topic_docs:
                         doi_link = (
                             f"[{doc.doi}](https://doi.org/{doc.doi})"
                             if doc.doi
                             else "N/A"
                         )
-
-                        st.markdown(
-                            f"- **{doc.title or 'Untitled'}** | DOI: {doi_link}"
-                        )
+                        st.markdown(f"- **{doc.title or 'Untitled'}** | DOI: {doi_link}")
 
 
 # ------------------------------------------------------------------
