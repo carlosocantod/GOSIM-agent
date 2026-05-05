@@ -244,37 +244,45 @@ def run_query(query: str) -> None:
     current_label = _format_period_label(curr_from, curr_to)
     previous_label = _format_period_label(prev_from, prev_to)
 
-    with st.spinner(f"Fetching papers for {current_label} and {previous_label}..."):
+    # --- Step 1: current period fetch + topic model + display ---
+    with st.spinner(f"Fetching papers for {current_label}..."):
         curr_docs, curr_fetched, curr_reranked = _fetch_papers(keywords_tuple, query, curr_from, curr_to)
-        prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
-
-    curr_with_abstract = [d for d in curr_docs if d.abstract]
-    prev_with_abstract = [d for d in prev_docs if d.abstract]
+        curr_with_abstract = [d for d in curr_docs if d.abstract]
 
     if not curr_with_abstract:
         render_centered_message("warning", "No abstracts found for the current period. Try broadening your search.")
         return
 
-    render_centered_message(
-        "info",
-        f"Kept {curr_reranked} of {curr_fetched} papers after semantic reranking.",
-    )
+    render_centered_message("info", f"Kept {curr_reranked} of {curr_fetched} papers after semantic reranking.")
 
-    with st.spinner("Running topic model on current period..."):
+    with st.spinner(f"Running topic model on {current_label}..."):
         curr_summaries, curr_assignments = _run_pipeline(
             tuple(d.abstract for d in curr_with_abstract),
             url_base=url_base, api_key=api_key, model=model, query=query,
         )
 
-    with st.spinner("Running topic model on previous period..."):
-        if prev_with_abstract:
+    curr_relevant_ids = {s.topic_id for s in curr_summaries.summaries}
+    curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
+    st.subheader(f"Current period: {current_label}")
+    st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
+    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract)
+
+    # --- Step 2: previous period fetch + topic model ---
+    st.divider()
+    with st.spinner(f"Fetching papers for {previous_label}..."):
+        prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
+        prev_with_abstract = [d for d in prev_docs if d.abstract]
+
+    if prev_with_abstract:
+        with st.spinner(f"Running topic model on {previous_label}..."):
             prev_summaries, prev_assignments = _run_pipeline(
                 tuple(d.abstract for d in prev_with_abstract),
                 url_base=url_base, api_key=api_key, model=model, query=query,
             )
-        else:
-            prev_summaries, prev_assignments = TopicSummaries(summaries=[]), []
+    else:
+        prev_summaries, prev_assignments = TopicSummaries(summaries=[]), []
 
+    # --- Step 3: compare and display ---
     with st.spinner("Comparing periods..."):
         comparison_json = _compare_periods(
             curr_summaries.model_dump_json(),
@@ -284,6 +292,24 @@ def run_query(query: str) -> None:
             url_base=url_base, api_key=api_key, model=model,
         )
         comparison = PeriodComparison.model_validate_json(comparison_json)
+
+    # Badge emerging topics on current period — re-render with badges now that we know them
+    emerging = set(comparison.emerging_topic_labels)
+    disappeared = set(comparison.disappeared_topic_labels)
+
+    st.subheader(f"How does this compare to {previous_label}?")
+    st.info(comparison.narrative)
+    if disappeared:
+        st.caption(f"**No longer prominent:** {', '.join(disappeared)}")
+
+    with st.expander(f"Previous period topics: {previous_label}", expanded=False):
+        if prev_summaries.summaries:
+            prev_relevant_ids = {s.topic_id for s in prev_summaries.summaries}
+            prev_docs_count = sum(1 for a in prev_assignments if a in prev_relevant_ids)
+            st.caption(f"{prev_docs_count} papers across {len(prev_summaries.summaries)} topics")
+            render_topic_dashboard(prev_summaries, prev_assignments, prev_with_abstract)
+        else:
+            st.caption("No data for previous period.")
 
     st.session_state["results"] = (
         curr_summaries, curr_assignments, curr_with_abstract,
@@ -299,8 +325,7 @@ def main() -> None:
 
     if submitted and query.strip():
         run_query(query)
-
-    if st.session_state["results"] is not None:
+    elif st.session_state["results"] is not None:
         (
             curr_summaries, curr_assignments, curr_docs,
             prev_summaries, prev_assignments, prev_docs,
