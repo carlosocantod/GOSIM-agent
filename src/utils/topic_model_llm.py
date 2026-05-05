@@ -51,6 +51,10 @@ class TopicSummaries(BaseModel):
     summaries: List[TopicSummary]
 
 
+class RelevantTopics(BaseModel):
+    relevant_topic_ids: List[int]
+
+
 class TopicModelResult(BaseModel):
     summaries: TopicSummaries
     topic_assignments: List[int]
@@ -166,10 +170,48 @@ def summarize_topics_with_pydantic(
     return TopicSummaries.model_validate_json(response.choices[0].message.content)
 
 
+def filter_relevant_topics(
+    topics_payload: List[TopicPayload], query: str, client: OpenAI, model: str
+) -> List[TopicPayload]:
+    system_prompt = f"""
+    The user asked: "{query}"
+
+    You are given a list of topics extracted from a set of documents retrieved for that query.
+    Some topics may be off-topic or only tangentially related.
+
+    Your job: return only the topic_ids that are clearly relevant to the user's query.
+    Be strict — if a topic seems tangential or unrelated, exclude it.
+
+    Output ONLY a JSON object.
+    Schema: {{"relevant_topic_ids": [int]}}
+    """
+
+    response = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    [topic.model_dump() for topic in topics_payload],
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
+
+    result = RelevantTopics.model_validate_json(response.choices[0].message.content)
+    relevant_ids = set(result.relevant_topic_ids)
+    return [t for t in topics_payload if t.topic_id in relevant_ids]
+
+
 def run_topic_model(
     docs: List[str],
     client: OpenAI,
     model: str,
+    query: str | None = None,
     k: int = K,
     embedding_model_name: str = EMBEDDING_MODEL_NAME,
     max_doc_chars: int = MAX_DOC_CHARS,
@@ -210,7 +252,11 @@ def run_topic_model(
         topic_model.merge_topics(docs, merges.merges)
         assignments = topic_model.topics_
 
-    summaries = summarize_topics_with_pydantic(build_topics_payload(topic_model), client, model)
+    final_payload = build_topics_payload(topic_model)
+    if query:
+        final_payload = filter_relevant_topics(final_payload, query, client, model)
+
+    summaries = summarize_topics_with_pydantic(final_payload, client, model)
     return TopicModelResult(summaries=summaries, topic_assignments=assignments, topic_model=topic_model)
 
 

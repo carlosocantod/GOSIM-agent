@@ -43,9 +43,10 @@ def _run_pipeline(
     url_base: str,
     api_key: str,
     model: str,
+    query: str,
 ) -> tuple[TopicSummaries, List[int]]:
     client = OpenAI(base_url=url_base, api_key=api_key)
-    result = run_topic_model(list(abstracts), client=client, model=model)
+    result = run_topic_model(list(abstracts), client=client, model=model, query=query)
     return result.summaries, result.topic_assignments
 
 
@@ -169,6 +170,7 @@ def run_query(query: str) -> tuple[TopicSummaries, List[int], List[OpenAlexWork]
             url_base=os.getenv("URL_BASE", ""),
             api_key=os.getenv("LLM_API_KEY", ""),
             model=os.getenv("LLM_MODEL", "glm-5"),
+            query=query,
         )
 
     return summaries, assignments, docs_with_abstract
