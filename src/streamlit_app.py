@@ -246,7 +246,7 @@ def run_query(query: str) -> None:
     previous_label = _format_period_label(prev_from, prev_to)
 
     # --- Step 1: current period fetch + topic model + display ---
-    with st.spinner(f"Fetching papers for {current_label}..."):
+    with st.spinner(f"Fetching latest papers ({current_label})..."):
         curr_docs, curr_fetched, curr_reranked = _fetch_papers(keywords_tuple, query, curr_from, curr_to)
         curr_with_abstract = [d for d in curr_docs if d.abstract]
 
@@ -256,7 +256,7 @@ def run_query(query: str) -> None:
 
     render_centered_message("info", f"Kept {curr_reranked} of {curr_fetched} papers after semantic reranking.")
 
-    with st.spinner(f"Running topic model on {current_label}..."):
+    with st.spinner(f"Running topic model on latest papers ({current_label})..."):
         curr_summaries, curr_assignments = _run_pipeline(
             tuple(d.abstract for d in curr_with_abstract),
             url_base=url_base, api_key=api_key, model=model, query=query,
@@ -270,12 +270,12 @@ def run_query(query: str) -> None:
 
     # --- Step 2: previous period fetch + topic model ---
     st.divider()
-    with st.spinner(f"Fetching papers for {previous_label}..."):
+    with st.spinner(f"Fetching papers for previous period ({previous_label})..."):
         prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
         prev_with_abstract = [d for d in prev_docs if d.abstract]
 
     if prev_with_abstract:
-        with st.spinner(f"Running topic model on {previous_label}..."):
+        with st.spinner(f"Running topic model on previous period ({previous_label})..."):
             prev_summaries, prev_assignments = _run_pipeline(
                 tuple(d.abstract for d in prev_with_abstract),
                 url_base=url_base, api_key=api_key, model=model, query=query,
@@ -298,7 +298,7 @@ def run_query(query: str) -> None:
     emerging = set(comparison.emerging_topic_labels)
     disappeared = set(comparison.disappeared_topic_labels)
 
-    st.subheader(f"How does this compare to {previous_label}?")
+    st.subheader(f"How does this compare to the previous period ({previous_label})?")
     st.info(comparison.narrative)
     if disappeared:
         st.caption(f"**No longer prominent:** {', '.join(disappeared)}")
