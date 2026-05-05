@@ -133,7 +133,7 @@ def summarize_topics_with_pydantic(
     - Output ONLY a JSON object.
     - Label should be short, ideally 3-7 words.
     - Summary should be 1-3 sentences.
-    - Do not say "This topic is about".
+    - Never start the summary with "This topic". Start directly with the subject matter.
     - Go straight to the point.
     Schema: {"summaries": [{"topic_id": int, "label": str, "summary": str}]}
     """
