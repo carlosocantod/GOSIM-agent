@@ -34,24 +34,6 @@ def _load_sbert_model() -> SentenceTransformer:
     return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 
-@st.cache_data(show_spinner=False)
-def _cached_run_agent(
-    query: str,
-    audience: str,
-    url_base: str,
-    api_key: str,
-    model: str,
-) -> ResearchAgentResult:
-    client = OpenAI(base_url=url_base, api_key=api_key)
-    return run_research_agent(
-        query=query,
-        client=client,
-        model=model,
-        embedding_model=_load_sbert_model(),
-        audience=audience,
-    )
-
-
 # ------------------------------------------------------------------
 # UI helpers
 # ------------------------------------------------------------------
@@ -254,9 +236,26 @@ def run_query(query: str, audience: str) -> None:
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    with st.spinner("Running LLM-enhanced topic model..."):
-        result = _cached_run_agent(query, audience, url_base, api_key, model)
+    cache_key = (query, audience, url_base, api_key, model)
+    cache = st.session_state.setdefault("_agent_cache", {})
 
+    if cache_key in cache:
+        st.session_state["results"] = cache[cache_key]
+        return
+
+    client = OpenAI(base_url=url_base, api_key=api_key)
+
+    with st.status("Analyzing query...", expanded=False) as status:
+        result = run_research_agent(
+            query=query,
+            client=client,
+            model=model,
+            embedding_model=_load_sbert_model(),
+            audience=audience,
+            on_step=lambda msg: status.update(label=msg),
+        )
+
+    cache[cache_key] = result
     st.session_state["results"] = result
 
 

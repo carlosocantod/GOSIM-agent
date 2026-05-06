@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Literal, TypedDict
+from typing import Callable, Literal, TypedDict
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -494,21 +494,30 @@ def build_research_graph():
     return graph.compile()
 
 
-def _run_linear_fallback(state: ResearchAgentState) -> ResearchAgentState:
+def _run_linear_fallback(
+    state: ResearchAgentState,
+    on_step: Callable[[str], None] | None = None,
+) -> ResearchAgentState:
     """Fallback with the same node order when LangGraph is unavailable."""
-    for node in [analyze_query_node]:
+
+    def run_node(node):
+        before = len(state.get("agent_steps", []))
         state.update(node(state))
+        steps = state.get("agent_steps", [])
+        if on_step and len(steps) > before:
+            on_step(steps[-1])
+
+    run_node(analyze_query_node)
     if not state.get("is_medical", True):
         return state
 
     for node in [create_plan_node, set_periods_node, fetch_current_node, inspect_search_quality_node]:
-        state.update(node(state))
+        run_node(node)
 
     route = route_after_quality(state)
     if route == "refine_search":
-        state.update(refine_search_node(state))
-        state.update(fetch_current_node(state))
-        state.update(inspect_search_quality_node(state))
+        for node in [refine_search_node, fetch_current_node, inspect_search_quality_node]:
+            run_node(node)
     if state.get("search_quality") and state["search_quality"].status == "insufficient":
         return state
 
@@ -520,7 +529,7 @@ def _run_linear_fallback(state: ResearchAgentState) -> ResearchAgentState:
         generate_followups_node,
         generate_recommendation_node,
     ]:
-        state.update(node(state))
+        run_node(node)
     return state
 
 
@@ -530,6 +539,7 @@ def run_research_agent(
     model: str,
     embedding_model: SentenceTransformer,
     audience: str = "General public",
+    on_step: Callable[[str], None] | None = None,
 ) -> ResearchAgentResult:
     initial_state: ResearchAgentState = {
         "query": query,
@@ -542,7 +552,15 @@ def run_research_agent(
     }
 
     graph = build_research_graph()
-    final_state = graph.invoke(initial_state) if graph is not None else _run_linear_fallback(initial_state)
+    if graph is not None:
+        final_state = dict(initial_state)
+        for event in graph.stream(initial_state):
+            for _, state_update in event.items():
+                final_state.update(state_update)
+                if on_step and state_update.get("agent_steps"):
+                    on_step(state_update["agent_steps"][-1])
+    else:
+        final_state = _run_linear_fallback(initial_state, on_step=on_step)
 
     return ResearchAgentResult(
         query=query,
