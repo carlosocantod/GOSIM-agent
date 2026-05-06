@@ -18,7 +18,7 @@ from src.utils.topic_model_llm import TopicSummaries
 load_dotenv()
 
 st.set_page_config(
-    page_title="MedSci Signal Lens - GOSIM",
+    page_title="TopicFlow",
     page_icon="🔬",
     layout="wide",
 )
@@ -41,8 +41,8 @@ def _load_sbert_model() -> SentenceTransformer:
 # ------------------------------------------------------------------
 
 def render_header() -> None:
-    st.title("🔬 MedSci Signal Lens")
-    st.caption("LLM-enhanced topic modeling for biomedical science communication")
+    st.title("🔬 TopicFlow")
+    st.caption("LangGraph-powered deep research and science communication agent for medical use cases — built on an LLM-enhanced topic model.")
 
 
 def render_query_input() -> tuple[str, str, bool]:
