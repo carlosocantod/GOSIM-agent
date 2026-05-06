@@ -32,6 +32,8 @@ Before the hackathon, the following infrastructure was put in place:
 
 > **LangGraph-powered research signal tracker and science communication assistant for medical use cases**
 
+🚀 **Live demo:** [huggingface.co/spaces/carlosocantod/GOSIM-agent](https://huggingface.co/spaces/carlosocantod/GOSIM-agent)
+
 ---
 
 ### The problem
