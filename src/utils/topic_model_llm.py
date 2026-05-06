@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from typing import List, TYPE_CHECKING
 
 import numpy as np
@@ -290,6 +291,9 @@ def run_topic_model(
     max_doc_chars: int = MAX_DOC_CHARS,
 ) -> TopicModelResult:
 
+    random.seed(42)
+    np.random.seed(42)
+
     embeddings = embedding_model.encode(
         truncate_docs(
             docs,
@@ -310,7 +314,7 @@ def run_topic_model(
     topic_model = BERTopic(
         embedding_model=embedding_model,
         umap_model=BaseDimensionalityReduction(),
-        hdbscan_model=KMeans(n_clusters=k, random_state=0, n_init="auto"),
+        hdbscan_model=KMeans(n_clusters=k, random_state=42, n_init=1),
         vectorizer_model=vectorizer_model,
         calculate_probabilities=False,
         verbose=True,
