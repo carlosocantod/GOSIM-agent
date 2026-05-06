@@ -23,7 +23,7 @@ Team members: Carlos Ocanto
 
 👨🏻‍🏫  **Presentation:** [docs/TopicFlow-GOSIM-Agent-presentation.pdf](docs/GOSIM_Agent_TopicFlow_Presentation.pdf)
 
-🎥  **YouTube:** [video](https://www.youtube.com/watch?v=qMX0m2sEPPs)
+🎥  **YouTube:** [video](https://www.youtube.com/watch?v=-PEKKNwMFxw)
 
 ---
 
