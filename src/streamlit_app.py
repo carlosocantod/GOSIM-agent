@@ -203,14 +203,15 @@ def render_period_comparison(
     relevant_topic_ids = {s.topic_id for s in current_summaries.summaries}
     docs_in_relevant = sum(1 for a in current_assignments if a in relevant_topic_ids)
     st.caption(f"{docs_in_relevant} papers across {len(current_summaries.summaries)} topics")
-    render_topic_dashboard(current_summaries, current_assignments, current_docs, key_prefix="curr", emerging_labels=emerging)
+    render_topic_dashboard(current_summaries, current_assignments, current_docs, key_prefix="curr")
 
     # Comparison narrative
     st.divider()
     st.subheader(f"How does this compare to {previous_label}?")
     st.info(comparison.narrative)
-
-    if comparison.disappeared_topic_labels:
+    if emerging:
+        st.success(f"**🆕 Emerging this period:** {', '.join(emerging)}")
+    if disappeared:
         st.caption(f"**No longer prominent:** {', '.join(disappeared)}")
 
     # Previous period
@@ -262,6 +263,12 @@ def run_query(query: str) -> None:
             url_base=url_base, api_key=api_key, model=model, query=query,
         )
 
+    curr_relevant_ids = {s.topic_id for s in curr_summaries.summaries}
+    curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
+    st.subheader(f"Current period: {current_label}")
+    st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
+    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract, key_prefix="curr")
+
     # --- Step 2: previous period fetch + topic model ---
     with st.spinner(f"Fetching papers for previous period ({previous_label})..."):
         prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
@@ -290,15 +297,11 @@ def run_query(query: str) -> None:
     emerging = set(comparison.emerging_topic_labels)
     disappeared = set(comparison.disappeared_topic_labels)
 
-    curr_relevant_ids = {s.topic_id for s in curr_summaries.summaries}
-    curr_docs_count = sum(1 for a in curr_assignments if a in curr_relevant_ids)
-    st.subheader(f"Current period: {current_label}")
-    st.caption(f"{curr_docs_count} papers across {len(curr_summaries.summaries)} topics")
-    render_topic_dashboard(curr_summaries, curr_assignments, curr_with_abstract, key_prefix="curr", emerging_labels=emerging)
-
     st.divider()
     st.subheader(f"How does this compare to the previous period ({previous_label})?")
     st.info(comparison.narrative)
+    if emerging:
+        st.success(f"**🆕 Emerging this period:** {', '.join(emerging)}")
     if disappeared:
         st.caption(f"**No longer prominent:** {', '.join(disappeared)}")
 
