@@ -52,12 +52,10 @@ def reconstruct_abstract(abstract_inverted_index: dict[str, list[int]] | None) -
 
 def last_n_months_date_range(n_months: int = 3, today: date | None = None) -> tuple[str, str]:
     today = today or date.today()
-    first_of_this_month = today.replace(day=1)
-    last_day = first_of_this_month - timedelta(days=1)
-    first_day = last_day.replace(day=1)
-    for _ in range(n_months - 1):
+    first_day = today.replace(day=1)
+    for _ in range(n_months):
         first_day = (first_day - timedelta(days=1)).replace(day=1)
-    return first_day.isoformat(), last_day.isoformat()
+    return first_day.isoformat(), today.isoformat()
 
 
 def previous_period_date_range(n_months: int = 3, today: date | None = None) -> tuple[str, str]:
