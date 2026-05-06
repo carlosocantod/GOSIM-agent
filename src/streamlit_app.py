@@ -112,8 +112,8 @@ def render_query_input() -> tuple[str, bool]:
         query = st.text_area(
             "Enter your medical research query",
             max_chars=500,
-            placeholder="e.g. What are the latest treatments for pediatric malaria?",
-            value="What are the latest treatments for malaria?",
+            placeholder="e.g. Which are the latest treatments for pediatric malaria?",
+            value="Which are the latest treatments for malaria?",
             height=100,
         )
 
