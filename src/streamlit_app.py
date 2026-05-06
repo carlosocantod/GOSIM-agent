@@ -62,6 +62,7 @@ def _fetch_papers(
     return reranked, fetched, len(reranked)
 
 
+@st.cache_data(show_spinner=False)
 def _run_pipeline(
     abstracts: tuple[str, ...],
     url_base: str,
