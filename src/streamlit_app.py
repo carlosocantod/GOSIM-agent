@@ -1,5 +1,4 @@
 import os
-from datetime import date
 from typing import List
 
 import streamlit as st
@@ -7,35 +6,27 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 
-from src.utils.llm import MESSAGE_NOT_MEDICAL
-from src.utils.llm import MedicalQueryAnalysis
-from src.utils.llm import extract_medical_keywords
 from src.utils.open_alex import OpenAlexWork
-from src.utils.open_alex import get_openalex_papers_for_period
-from src.utils.open_alex import last_n_months_date_range
-from src.utils.open_alex import previous_period_date_range
+from src.utils.research_agent import ResearchAgentResult
+from src.utils.research_agent import run_research_agent
 from src.utils.topic_model_llm import EMBEDDING_MODEL_NAME
 from src.utils.topic_model_llm import PeriodComparison
 from src.utils.topic_model_llm import TopicSummaries
-from src.utils.topic_model_llm import compare_topic_periods
-from src.utils.topic_model_llm import run_topic_model
-from src.utils.topic_model_llm import semantic_rerank
 
 load_dotenv()
 
-N_MONTHS_CURRENT = 3
-N_MONTHS_BASELINE = 6
-
 st.set_page_config(
-    page_title="Medical Science Communication Helper Agent - GOSIM",
-    page_icon="🩺",
+    page_title="MedSci Signal Lens - GOSIM",
+    page_icon="🔬",
     layout="wide",
 )
+
 if "results" not in st.session_state:
     st.session_state["results"] = None
 
+
 # ------------------------------------------------------------------
-# Cached resources / steps
+# Cached resources
 # ------------------------------------------------------------------
 
 @st.cache_resource(show_spinner="Loading embedding model...")
@@ -44,58 +35,21 @@ def _load_sbert_model() -> SentenceTransformer:
 
 
 @st.cache_data(show_spinner=False)
-def _analyze_query(query: str) -> MedicalQueryAnalysis:
-    return extract_medical_keywords(query)
-
-
-@st.cache_data(show_spinner=False)
-def _fetch_papers(
-    keywords: tuple[str, ...],
+def _cached_run_agent(
     query: str,
-    from_date: str,
-    to_date: str,
-) -> tuple[List[OpenAlexWork], int, int]:
-    search_query = " OR ".join(keywords)
-    docs = get_openalex_papers_for_period(search_query, from_date=from_date, to_date=to_date, limit=500)
-    fetched = len(docs)
-    reranked = semantic_rerank(query, docs, embedding_model=_load_sbert_model(), top_n=200)
-    return reranked, fetched, len(reranked)
-
-
-@st.cache_data(show_spinner=False)
-def _run_pipeline(
-    abstracts: tuple[str, ...],
+    audience: str,
     url_base: str,
     api_key: str,
     model: str,
-    query: str,
-) -> tuple[TopicSummaries, List[int]]:
+) -> ResearchAgentResult:
     client = OpenAI(base_url=url_base, api_key=api_key)
-    result = run_topic_model(
-        list(abstracts),
+    return run_research_agent(
+        query=query,
         client=client,
         model=model,
         embedding_model=_load_sbert_model(),
-        query=query,
+        audience=audience,
     )
-    return result.summaries, result.topic_assignments
-
-
-@st.cache_data(show_spinner=False)
-def _compare_periods(
-    current_summaries_json: str,
-    previous_summaries_json: str,
-    current_period_label: str,
-    previous_period_label: str,
-    url_base: str,
-    api_key: str,
-    model: str,
-) -> str:
-    client = OpenAI(base_url=url_base, api_key=api_key)
-    current = TopicSummaries.model_validate_json(current_summaries_json)
-    previous = TopicSummaries.model_validate_json(previous_summaries_json)
-    result = compare_topic_periods(current, previous, current_period_label, previous_period_label, client, model)
-    return result.model_dump_json()
 
 
 # ------------------------------------------------------------------
@@ -103,11 +57,11 @@ def _compare_periods(
 # ------------------------------------------------------------------
 
 def render_header() -> None:
-    st.title("🩺 Medical Science Communication Helper Agent")
-    st.caption("Powered by OpenAlex + BERTopic + LLM")
+    st.title("🔬 MedSci Signal Lens")
+    st.caption("LLM-enhanced topic modeling for biomedical science communication")
 
 
-def render_query_input() -> tuple[str, bool]:
+def render_query_input() -> tuple[str, str, bool]:
     _, center, _ = st.columns([1, 2, 1])
 
     with center:
@@ -119,13 +73,26 @@ def render_query_input() -> tuple[str, bool]:
             height=100,
         )
 
+        audience = st.selectbox(
+            "Science communication audience",
+            [
+                "General public",
+                "Patients",
+                "Clinicians",
+                "Researchers",
+                "Policy makers",
+                "Journalists",
+            ],
+            index=0,
+        )
+
         submitted = st.button(
-            "Explore literature",
+            "Explore literature signals",
             type="primary",
             use_container_width=True,
         )
 
-    return query, submitted
+    return query, audience, submitted
 
 
 def render_centered_message(kind: str, message: str) -> None:
@@ -142,10 +109,52 @@ def render_centered_message(kind: str, message: str) -> None:
             st.error(message)
 
 
-def _format_period_label(from_date: str, to_date: str) -> str:
-    from_dt = date.fromisoformat(from_date)
-    to_dt = date.fromisoformat(to_date)
-    return f"{from_dt.strftime('%b %Y')} – {to_dt.strftime('%b %Y')}"
+def render_agent_sidebar(result: ResearchAgentResult | None) -> None:
+    with st.sidebar:
+        st.header("Signal workflow")
+        st.caption("What the LLM-enhanced topic model checked during this run.")
+
+        if result is None:
+            st.write("Run a query to see the workflow trace.")
+            return
+
+        for step in result.agent_steps:
+            st.write(step)
+
+
+def render_plan_and_quality(result: ResearchAgentResult) -> None:
+    if result.analysis and result.analysis.keywords:
+        render_centered_message("success", f"Keywords used: {', '.join(result.keywords_used or result.analysis.keywords)}")
+
+    if result.plan:
+        with st.expander("Literature signal plan", expanded=True):
+            st.markdown(f"**Interpreted question:** {result.plan.interpreted_question}")
+
+            cols = st.columns(2)
+            with cols[0]:
+                st.markdown("**Search focus**")
+                for item in result.plan.search_focus:
+                    st.markdown(f"- {item}")
+
+                st.markdown("**Prioritized evidence**")
+                for item in result.plan.evidence_types_to_prioritize:
+                    st.markdown(f"- {item}")
+
+            with cols[1]:
+                st.markdown("**Include**")
+                for item in result.plan.inclusion_criteria:
+                    st.markdown(f"- {item}")
+
+                st.markdown("**Exclude**")
+                for item in result.plan.exclusion_criteria:
+                    st.markdown(f"- {item}")
+
+    if result.search_quality:
+        with st.expander("Search quality check", expanded=False):
+            st.markdown(f"**Decision:** `{result.search_quality.status}`")
+            st.write(result.search_quality.reason)
+            if result.search_quality.revised_keywords:
+                st.markdown(f"**Revised keywords:** {', '.join(result.search_quality.revised_keywords)}")
 
 
 def render_topic_dashboard(
@@ -161,7 +170,7 @@ def render_topic_dashboard(
         topic_docs = [
             docs[i]
             for i, topic_id in enumerate(assignments)
-            if topic_id == summary.topic_id
+            if i < len(docs) and topic_id == summary.topic_id
         ]
 
         is_emerging = emerging_labels and summary.label in emerging_labels
@@ -198,119 +207,96 @@ def render_period_comparison(
     emerging = set(comparison.emerging_topic_labels)
     disappeared = set(comparison.disappeared_topic_labels)
 
-    # Current period
-    st.subheader(f"Current period: {current_label}")
+    st.subheader(f"Current literature signals: {current_label}")
     relevant_topic_ids = {s.topic_id for s in current_summaries.summaries}
     docs_in_relevant = sum(1 for a in current_assignments if a in relevant_topic_ids)
     st.caption(f"{docs_in_relevant} papers across {len(current_summaries.summaries)} topics")
-    render_topic_dashboard(current_summaries, current_assignments, current_docs, key_prefix="curr")
+    render_topic_dashboard(
+        current_summaries,
+        current_assignments,
+        current_docs,
+        key_prefix="curr",
+        emerging_labels=emerging,
+    )
 
-    # Comparison narrative
     st.divider()
-    st.subheader(f"How does this compare to {previous_label}?")
+    st.subheader(f"What changed vs. {previous_label}?")
     st.info(comparison.narrative)
     if emerging:
-        st.success(f"**🆕 Emerging this period:** {', '.join(emerging)}")
+        st.success(f"**🆕 Emerging signals:** {', '.join(emerging)}")
     if disappeared:
-        st.caption(f"**No longer prominent:** {', '.join(disappeared)}")
+        st.caption(f"**Less prominent than baseline:** {', '.join(disappeared)}")
 
-    # Previous period
-    with st.expander(f"Previous period topics: {previous_label}", expanded=False):
+    with st.expander(f"Baseline topics: {previous_label}", expanded=False):
         prev_relevant_ids = {s.topic_id for s in previous_summaries.summaries}
         prev_docs_count = sum(1 for a in previous_assignments if a in prev_relevant_ids)
         st.caption(f"{prev_docs_count} papers across {len(previous_summaries.summaries)} topics")
         render_topic_dashboard(previous_summaries, previous_assignments, previous_docs, key_prefix="prev")
 
 
-# ------------------------------------------------------------------
-# Main query runner
-# ------------------------------------------------------------------
+def render_science_communication(result: ResearchAgentResult) -> None:
+    if result.recommendation:
+        st.divider()
+        st.subheader("Science communication angle")
+        st.markdown(f"### {result.recommendation.headline}")
+        st.write(result.recommendation.recommendation)
+        st.warning(f"**Caution:** {result.recommendation.caution}")
+        st.info(f"**Audience framing:** {result.recommendation.audience_angle}")
 
-def run_query(query: str) -> None:
-    with st.spinner("Analyzing query..."):
-        analysis = _analyze_query(query)
+    if result.followups:
+        with st.expander("Suggested next questions", expanded=True):
+            for question in result.followups:
+                st.markdown(f"- {question}")
 
-    if not analysis.is_medical:
-        render_centered_message("error", MESSAGE_NOT_MEDICAL)
-        return
 
-    render_centered_message("success", f"Keywords: {', '.join(analysis.keywords)}")
-
-    keywords_tuple = tuple(analysis.keywords)
+def run_query(query: str, audience: str) -> None:
     url_base = os.getenv("URL_BASE", "")
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    curr_from, curr_to = last_n_months_date_range(N_MONTHS_CURRENT)
-    prev_from, prev_to = previous_period_date_range(N_MONTHS_BASELINE, n_months_current=N_MONTHS_CURRENT)
-    current_label = _format_period_label(curr_from, curr_to)
-    previous_label = _format_period_label(prev_from, prev_to)
+    with st.spinner("Running LLM-enhanced topic model..."):
+        result = _cached_run_agent(query, audience, url_base, api_key, model)
 
-    with st.spinner(f"Fetching latest papers ({current_label})..."):
-        curr_docs, curr_fetched, curr_reranked = _fetch_papers(keywords_tuple, query, curr_from, curr_to)
-        curr_with_abstract = [d for d in curr_docs if d.abstract]
-
-    if not curr_with_abstract:
-        render_centered_message("warning", "No abstracts found for the current period. Try broadening your search.")
-        return
-
-    render_centered_message("info", f"Kept {curr_reranked} of {curr_fetched} papers after semantic reranking.")
-
-    with st.spinner(f"Running topic model on latest papers ({current_label})..."):
-        curr_summaries, curr_assignments = _run_pipeline(
-            tuple(d.abstract for d in curr_with_abstract),
-            url_base=url_base, api_key=api_key, model=model, query=query,
-        )
-
-    with st.spinner(f"Fetching papers for previous period ({previous_label})..."):
-        prev_docs, _, _ = _fetch_papers(keywords_tuple, query, prev_from, prev_to)
-        prev_with_abstract = [d for d in prev_docs if d.abstract]
-
-    if prev_with_abstract:
-        with st.spinner(f"Running topic model on previous period ({previous_label})..."):
-            prev_summaries, prev_assignments = _run_pipeline(
-                tuple(d.abstract for d in prev_with_abstract),
-                url_base=url_base, api_key=api_key, model=model, query=query,
-            )
-    else:
-        prev_summaries, prev_assignments = TopicSummaries(summaries=[]), []
-
-    with st.spinner("Comparing periods..."):
-        comparison_json = _compare_periods(
-            curr_summaries.model_dump_json(),
-            prev_summaries.model_dump_json(),
-            current_label,
-            previous_label,
-            url_base=url_base, api_key=api_key, model=model,
-        )
-        comparison = PeriodComparison.model_validate_json(comparison_json)
-
-    st.session_state["results"] = (
-        curr_summaries, curr_assignments, curr_with_abstract,
-        prev_summaries, prev_assignments, prev_with_abstract,
-        comparison, current_label, previous_label,
-    )
+    st.session_state["results"] = result
 
 
 def main() -> None:
     render_header()
 
-    query, submitted = render_query_input()
+    query, audience, submitted = render_query_input()
 
     if submitted and query.strip():
-        run_query(query)
+        run_query(query, audience)
 
-    if st.session_state["results"] is not None:
-        (
-            curr_summaries, curr_assignments, curr_docs,
-            prev_summaries, prev_assignments, prev_docs,
-            comparison, current_label, previous_label,
-        ) = st.session_state["results"]
+    result = st.session_state.get("results")
+    render_agent_sidebar(result)
 
+    if result is None:
+        return
+
+    if not result.is_medical:
+        render_centered_message("error", result.message or "Please enter a medical or biomedical query.")
+        return
+
+    render_plan_and_quality(result)
+
+    if result.current_summaries and result.previous_summaries and result.comparison:
         render_period_comparison(
-            curr_summaries, curr_assignments, curr_docs,
-            prev_summaries, prev_assignments, prev_docs,
-            comparison, current_label, previous_label,
+            result.current_summaries,
+            result.current_assignments,
+            result.current_docs,
+            result.previous_summaries,
+            result.previous_assignments,
+            result.previous_docs,
+            result.comparison,
+            result.current_label,
+            result.previous_label,
+        )
+        render_science_communication(result)
+    else:
+        render_centered_message(
+            "warning",
+            "Not enough usable abstracts were found for topic modeling. Try a broader biomedical query.",
         )
 
 
