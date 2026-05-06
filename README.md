@@ -12,27 +12,18 @@ short_description: Streamlit template space
 license: mit
 ---
 
-## Medical Science Communication Helper Agent
-
-A Streamlit app for the GOSIM hackathon, focused on medical science communication.
-
-### Pre-hackathon setup
-Before the hackathon, the following infrastructure was put in place:
-- Streamlit app scaffold.
-- Automatic deployment to Hugging Face Spaces via GitHub Actions (push to `main` triggers sync).
-- OpenAlex API integration for querying recent biomedical literature by keyword.
-
-### Requirements
-- Python 3.13+
-- `OPEN_ALEX_KEY` set in your `.env` file (get a free key at [openalex.org/settings/api](https://openalex.org/settings/api))
-
----
 
 ## TopicFlow
+Team members: Carlos Ocanto
 
 > **LangGraph-powered research signal tracker and science communication assistant for medical use cases**
 
+
 🚀 **Live demo:** [huggingface.co/spaces/carlosocantod/GOSIM-agent](https://huggingface.co/spaces/carlosocantod/GOSIM-agent)
+
+🎥  **YouTube:** [video](docs/GOSIM_Agent_TopicFlow_Presentation.pdf)
+
+👨🏻‍🏫  **Presentation:** [docs/TopicFlow-GOSIM-Agent-presentation.pdf](docs/GOSIM_Agent_TopicFlow_Presentation.pdf)
 
 ---
 
@@ -49,8 +40,16 @@ Given a plain-language medical question — *"What are the latest treatments for
 
 The goal is to compress hours of reading and writing into a single query.
 
+
 ---
 
+### Pre-hackathon setup
+Before the hackathon, the following infrastructure was put in place:
+- Streamlit app scaffold.
+- Automatic deployment to Hugging Face Spaces via GitHub Actions (push to `main` triggers sync).
+- OpenAlex API integration for querying recent biomedical literature by keyword.
+
+---
 ### How it works
 
 The pipeline is split into two independent layers so that changing the target audience or platform does not re-run the expensive topic model.
@@ -109,27 +108,20 @@ Core result  →  generate_followups  →  generate_social_content  →  Draft
 
 The full LangGraph diagram is saved in [`assets/langgraph_core_pipeline.mmd`](assets/langgraph_core_pipeline.mmd) — paste it into [mermaid.live](https://mermaid.live) to render it.
 
----
-
-### Screenshot
-
-> _Add a screenshot here once the app is running_
-
-![TopicFlow screenshot placeholder](assets/screenshot.png)
 
 ---
 
 ### Tech stack
 
-| Layer | Technology |
-|---|---|
+| Layer | Technology                                                                                 |
+|---|--------------------------------------------------------------------------------------------|
 | Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) `StateGraph` with conditional edges |
-| Literature source | [OpenAlex](https://openalex.org) (open, free) |
-| Semantic reranking | [Sentence-Transformers](https://www.sbert.net) (`all-MiniLM-L6-v2`) |
-| Topic discovery | [BERTopic](https://maartengr.github.io/BERTopic/) with KMeans (deterministic, no UMAP) |
-| LLM calls | Any OpenAI-compatible endpoint (GLM, GPT-4, etc.) |
-| UI | [Streamlit](https://streamlit.io) |
-| Deployment | Docker → Hugging Face Spaces (auto-synced via GitHub Actions) |
+| Literature source | [OpenAlex](https://openalex.org) (open, free)                                              |
+| Semantic reranking | [Sentence-Transformers](https://www.sbert.net) (`all-MiniLM-L6-v2`)                        |
+| Topic discovery | [BERTopic](https://maartengr.github.io/BERTopic/) with KMeans (deterministic, no UMAP)     |
+| LLM calls | Any OpenAI-compatible endpoint (GLM, GPT-4, etc.). We used DeepSeek-po                     |
+| UI | [Streamlit](https://streamlit.io)                                                          |
+| Deployment | Docker → Hugging Face Spaces (auto-synced via GitHub Actions)                              |
 
 ---
 
@@ -140,11 +132,6 @@ cp .env.sample .env   # fill in your keys
 uv run streamlit run src/streamlit_app.py
 ```
 
-Or with Docker:
-
-```bash
-docker compose up --build
-```
 
 ### Environment variables
 
@@ -167,5 +154,3 @@ docker compose up --build
 - **Richer UI** — topic size-over-time charts, paper-count timelines, keyword clouds.
 - **Export** — download results as PDF report or structured JSON for downstream workflows.
 - **More sources** — expand beyond OpenAlex to PubMed, bioRxiv, clinical trial registries.
-- **More platforms** — Substack newsletter draft, slide deck outline, lay-audience one-pager.
-- **Domain expansion** — extend the medical-query guard to support other scientific fields.
