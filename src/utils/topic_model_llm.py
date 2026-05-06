@@ -310,7 +310,8 @@ def run_topic_model(
         max_df=0.9,
         token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z\-]{2,}\b",
     )
-
+    if embeddings.shape[0]< 20:
+        k=1
     topic_model = BERTopic(
         embedding_model=embedding_model,
         umap_model=BaseDimensionalityReduction(),
