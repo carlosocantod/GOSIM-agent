@@ -168,13 +168,11 @@ def render_topic_dashboard(
 
         with cols[idx % 2]:
             show_key = f"{key_prefix}_docs_{summary.topic_id}"
-            showing_papers = st.session_state.get(show_key, False)
+            expander_key = f"{key_prefix}_exp_{summary.topic_id}"
 
-            with st.expander(f"**{label_display}** — {len(topic_docs)} papers", expanded=showing_papers):
+            with st.expander(f"**{label_display}** — {len(topic_docs)} papers", key=expander_key):
                 st.markdown(summary.summary)
-                st.toggle("Show papers", key=show_key)
-
-                if st.session_state.get(show_key, False):
+                if st.toggle("Show papers", key=show_key):
                     st.divider()
                     for doc in topic_docs:
                         doi_link = (
