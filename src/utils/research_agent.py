@@ -246,7 +246,7 @@ def fetch_current_node(state: ResearchAgentState) -> ResearchAgentState:
         "current_reranked": reranked,
         "agent_steps": _step(
             state,
-            f"✅ Retrieved {fetched} current-period papers; kept {len(with_abstract)} with abstracts after reranking.",
+            f"✅ Retrieved {fetched} current-period papers; kept {len(with_abstract)} after reranking.",
         ),
     }
 
