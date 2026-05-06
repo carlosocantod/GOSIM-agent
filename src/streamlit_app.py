@@ -7,8 +7,10 @@ from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 
 from src.utils.open_alex import OpenAlexWork
+from src.utils.research_agent import CommunicationResult
 from src.utils.research_agent import ResearchAgentResult
-from src.utils.research_agent import run_research_agent
+from src.utils.research_agent import run_communication_layer
+from src.utils.research_agent import run_core_pipeline
 from src.utils.topic_model_llm import EMBEDDING_MODEL_NAME
 from src.utils.topic_model_llm import PeriodComparison
 from src.utils.topic_model_llm import TopicSummaries
@@ -21,8 +23,8 @@ st.set_page_config(
     layout="wide",
 )
 
-if "results" not in st.session_state:
-    st.session_state["results"] = None
+if "core_result" not in st.session_state:
+    st.session_state["core_result"] = None
 
 
 # ------------------------------------------------------------------
@@ -55,26 +57,13 @@ def render_query_input() -> tuple[str, str, bool]:
             height=100,
         )
 
-        audience = st.selectbox(
-            "Science communication audience",
-            [
-                "General public",
-                "Patients",
-                "Clinicians",
-                "Researchers",
-                "Policy makers",
-                "Journalists",
-            ],
-            index=0,
-        )
-
         submitted = st.button(
             "Explore literature signals",
             type="primary",
             use_container_width=True,
         )
 
-    return query, audience, submitted
+    return query, submitted
 
 
 def render_centered_message(kind: str, message: str) -> None:
@@ -216,82 +205,112 @@ def render_period_comparison(
         render_topic_dashboard(previous_summaries, previous_assignments, previous_docs, key_prefix="prev")
 
 
-def render_science_communication(result: ResearchAgentResult) -> None:
-    if result.recommendation:
+def render_science_communication(comm: CommunicationResult) -> None:
+    if comm.recommendation:
         st.divider()
         st.subheader("Science communication angle")
-        st.markdown(f"### {result.recommendation.headline}")
-        st.write(result.recommendation.recommendation)
-        st.warning(f"**Caution:** {result.recommendation.caution}")
-        st.info(f"**Audience framing:** {result.recommendation.audience_angle}")
+        st.markdown(f"### {comm.recommendation.headline}")
+        st.write(comm.recommendation.recommendation)
+        st.warning(f"**Caution:** {comm.recommendation.caution}")
+        st.info(f"**Audience framing:** {comm.recommendation.audience_angle}")
 
-    if result.followups:
+    if comm.followups:
         with st.expander("Suggested next questions", expanded=True):
-            for question in result.followups:
+            for question in comm.followups:
                 st.markdown(f"- {question}")
 
 
-def run_query(query: str, audience: str) -> None:
+_AUDIENCES = ["General public", "Patients", "Clinicians", "Researchers", "Policy makers", "Journalists"]
+
+
+def _run_core_query(query: str) -> None:
     url_base = os.getenv("URL_BASE", "")
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    cache_key = (query, audience, url_base, api_key, model)
-    cache = st.session_state.setdefault("_agent_cache", {})
+    cache_key = (query, url_base, api_key, model)
+    cache = st.session_state.setdefault("_core_cache", {})
 
     if cache_key in cache:
-        st.session_state["results"] = cache[cache_key]
+        st.session_state["core_result"] = cache[cache_key]
         return
 
     client = OpenAI(base_url=url_base, api_key=api_key)
 
     with st.status("Analyzing query...", expanded=False) as status:
-        result = run_research_agent(
+        result = run_core_pipeline(
             query=query,
             client=client,
             model=model,
             embedding_model=_load_sbert_model(),
-            audience=audience,
             on_step=lambda msg: status.update(label=msg),
         )
 
     cache[cache_key] = result
-    st.session_state["results"] = result
+    st.session_state["core_result"] = result
+
+
+def _get_communication(core: ResearchAgentResult, audience: str) -> CommunicationResult:
+    url_base = os.getenv("URL_BASE", "")
+    api_key = os.getenv("LLM_API_KEY", "")
+    model = os.getenv("LLM_MODEL", "glm-5")
+
+    cache_key = (core.query, audience, url_base, api_key, model)
+    cache = st.session_state.setdefault("_comm_cache", {})
+
+    if cache_key in cache:
+        return cache[cache_key]
+
+    client = OpenAI(base_url=url_base, api_key=api_key)
+
+    with st.spinner("Generating communication framing..."):
+        comm = run_communication_layer(core, audience, client, model)
+
+    cache[cache_key] = comm
+    return comm
 
 
 def main() -> None:
     render_header()
 
-    query, audience, submitted = render_query_input()
+    query, submitted = render_query_input()
 
     if submitted and query.strip():
-        run_query(query, audience)
+        st.session_state["core_result"] = None
+        _run_core_query(query)
 
-    result = st.session_state.get("results")
-    render_agent_sidebar(result)
+    core = st.session_state.get("core_result")
+    render_agent_sidebar(core)
 
-    if result is None:
+    if core is None:
         return
 
-    if not result.is_medical:
-        render_centered_message("error", result.message or "Please enter a medical or biomedical query.")
+    if not core.is_medical:
+        render_centered_message("error", core.message or "Please enter a medical or biomedical query.")
         return
 
-    render_plan_and_quality(result)
+    render_plan_and_quality(core)
 
-    if result.current_summaries and result.previous_summaries and result.comparison:
+    if core.current_summaries and core.previous_summaries and core.comparison:
         render_period_comparison(
-            result.current_summaries,
-            result.current_assignments,
-            result.current_docs,
-            result.previous_summaries,
-            result.previous_assignments,
-            result.previous_docs,
-            result.comparison,
-            result.current_label,
-            result.previous_label,
+            core.current_summaries,
+            core.current_assignments,
+            core.current_docs,
+            core.previous_summaries,
+            core.previous_assignments,
+            core.previous_docs,
+            core.comparison,
+            core.current_label,
+            core.previous_label,
         )
-        render_science_communication(result)
+
+        st.divider()
+        _, center, _ = st.columns([1, 2, 1])
+        with center:
+            audience = st.selectbox("Science communication audience", _AUDIENCES, key="audience_selector")
+
+        comm = _get_communication(core, audience)
+        render_science_communication(comm)
     else:
         render_centered_message(
             "warning",

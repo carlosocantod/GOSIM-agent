@@ -84,6 +84,11 @@ class ResearchAgentResult(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+class CommunicationResult(BaseModel):
+    followups: list[str] = Field(default_factory=list)
+    recommendation: CommunicationRecommendation | None = None
+
+
 class ResearchAgentState(TypedDict, total=False):
     query: str
     audience: str
@@ -460,7 +465,8 @@ def route_after_quality(state: ResearchAgentState) -> str:
     return "topic_model_current"
 
 
-def build_research_graph():
+def build_core_graph():
+    """Core pipeline graph: analyze through compare_periods. Audience-independent."""
     if StateGraph is None:
         return None
 
@@ -475,8 +481,6 @@ def build_research_graph():
     graph.add_node("fetch_previous", fetch_previous_node)
     graph.add_node("topic_model_previous", topic_model_previous_node)
     graph.add_node("compare_periods", compare_periods_node)
-    graph.add_node("generate_followups", generate_followups_node)
-    graph.add_node("generate_recommendation", generate_recommendation_node)
 
     graph.add_edge(START, "analyze_query")
     graph.add_conditional_edges("analyze_query", route_after_analysis)
@@ -488,17 +492,15 @@ def build_research_graph():
     graph.add_edge("topic_model_current", "fetch_previous")
     graph.add_edge("fetch_previous", "topic_model_previous")
     graph.add_edge("topic_model_previous", "compare_periods")
-    graph.add_edge("compare_periods", "generate_followups")
-    graph.add_edge("generate_followups", "generate_recommendation")
-    graph.add_edge("generate_recommendation", END)
+    graph.add_edge("compare_periods", END)
     return graph.compile()
 
 
-def _run_linear_fallback(
+def _run_linear_core_fallback(
     state: ResearchAgentState,
     on_step: Callable[[str], None] | None = None,
 ) -> ResearchAgentState:
-    """Fallback with the same node order when LangGraph is unavailable."""
+    """Linear fallback for the core pipeline when LangGraph is unavailable."""
 
     def run_node(node):
         before = len(state.get("agent_steps", []))
@@ -521,29 +523,20 @@ def _run_linear_fallback(
     if state.get("search_quality") and state["search_quality"].status == "insufficient":
         return state
 
-    for node in [
-        topic_model_current_node,
-        fetch_previous_node,
-        topic_model_previous_node,
-        compare_periods_node,
-        generate_followups_node,
-        generate_recommendation_node,
-    ]:
+    for node in [topic_model_current_node, fetch_previous_node, topic_model_previous_node, compare_periods_node]:
         run_node(node)
     return state
 
 
-def run_research_agent(
+def run_core_pipeline(
     query: str,
     client: OpenAI,
     model: str,
     embedding_model: SentenceTransformer,
-    audience: str = "General public",
     on_step: Callable[[str], None] | None = None,
 ) -> ResearchAgentResult:
     initial_state: ResearchAgentState = {
         "query": query,
-        "audience": audience,
         "client": client,
         "model": model,
         "embedding_model": embedding_model,
@@ -551,7 +544,7 @@ def run_research_agent(
         "search_refinements": 0,
     }
 
-    graph = build_research_graph()
+    graph = build_core_graph()
     if graph is not None:
         final_state = dict(initial_state)
         for event in graph.stream(initial_state):
@@ -560,7 +553,7 @@ def run_research_agent(
                 if on_step and state_update.get("agent_steps"):
                     on_step(state_update["agent_steps"][-1])
     else:
-        final_state = _run_linear_fallback(initial_state, on_step=on_step)
+        final_state = _run_linear_core_fallback(initial_state, on_step=on_step)
 
     return ResearchAgentResult(
         query=query,
@@ -580,6 +573,52 @@ def run_research_agent(
         comparison=final_state.get("comparison"),
         current_label=final_state.get("current_label", ""),
         previous_label=final_state.get("previous_label", ""),
-        followups=final_state.get("followups", []),
-        recommendation=final_state.get("recommendation"),
     )
+
+
+def run_communication_layer(
+    core: ResearchAgentResult,
+    audience: str,
+    client: OpenAI,
+    model: str,
+    on_step: Callable[[str], None] | None = None,
+) -> CommunicationResult:
+    state: ResearchAgentState = {
+        "query": core.query,
+        "audience": audience,
+        "client": client,
+        "model": model,
+        "current_summaries": core.current_summaries,
+        "comparison": core.comparison,
+        "agent_steps": list(core.agent_steps),
+    }
+
+    def run_node(node):
+        before = len(state.get("agent_steps", []))
+        state.update(node(state))
+        steps = state.get("agent_steps", [])
+        if on_step and len(steps) > before:
+            on_step(steps[-1])
+
+    run_node(generate_followups_node)
+    run_node(generate_recommendation_node)
+
+    return CommunicationResult(
+        followups=state.get("followups", []),
+        recommendation=state.get("recommendation"),
+    )
+
+
+def run_research_agent(
+    query: str,
+    client: OpenAI,
+    model: str,
+    embedding_model: SentenceTransformer,
+    audience: str = "General public",
+    on_step: Callable[[str], None] | None = None,
+) -> ResearchAgentResult:
+    """Convenience wrapper: runs core pipeline then communication layer."""
+    core = run_core_pipeline(query, client, model, embedding_model, on_step=on_step)
+    comm = run_communication_layer(core, audience, client, model, on_step=on_step)
+    # Merge communication results back for callers that expect the old shape.
+    return core.model_copy(update={"followups": comm.followups, "recommendation": comm.recommendation})
