@@ -28,40 +28,108 @@ Before the hackathon, the following infrastructure was put in place:
 
 ---
 
-## TopicFlow — LangGraph-powered medical research signal tracker
+## TopicFlow
 
-Doctors and researchers are overwhelmed. The volume of biomedical literature doubles roughly every nine years, and no clinician has time to track emerging treatment signals across thousands of new papers each month. **TopicFlow** automates that scan: given a plain-language medical question, it fetches recent literature, discovers the dominant research themes, compares them to a six-month baseline, and drafts science-communication content ready to publish — all in one run.
+> **LangGraph-powered research signal tracker and science communication assistant for medical use cases**
+
+---
+
+### The problem
+
+Clinicians and medical researchers are drowning in literature. Approximately 1.5 million biomedical papers are published every year — more than 4,000 per day. A doctor who wants to stay current on treatment advances for a single condition would need to read dozens of papers a week just to keep up, on top of seeing patients. In practice, this is impossible.
+
+**TopicFlow** addresses this by automating the literature scan.
+Given a plain-language medical question — *"What are the latest treatments for malaria?"* — the tool:
+
+1. Identifies the dominant research themes in recent publications
+2. Compares them to a six-month baseline to surface what is *emerging* and what has *faded*
+3. Drafts ready-to-publish science communication content tailored to a chosen audience (clinicians, patients, journalists, etc.) and platform (LinkedIn, Instagram, Twitter/X)
+
+The goal is to compress hours of reading and writing into a single query.
+
+---
 
 ### How it works
 
-The pipeline has two layers: a **core research layer** that runs once per query (and is cached), and a **communication layer** that regenerates whenever the audience or platform changes.
+The pipeline is split into two independent layers so that changing the target audience or platform does not re-run the expensive topic model.
 
-```mermaid
-flowchart TD
-    A([User query]) --> B[analyze_query\nLLM: is this medical?\nextract keywords]
-    B -->|not medical| Z([END — show error])
-    B -->|medical| C[create_plan\nLLM: search focus,\ninclusion/exclusion criteria]
-    C --> D[set_periods\ncompute current 3-month\nand baseline 6-month windows]
-    D --> E[fetch_current\nOpenAlex API]
-    E --> F[inspect_search_quality\nLLM: enough signal?\nrevise keywords if not]
-    F -->|retry with new keywords| E
-    F -->|insufficient after retry| Z2([END — warn user])
-    F -->|ok| G[topic_model_current\nBERTopic + KMeans\nLLM merge & summarise]
-    G --> H[fetch_previous\nOpenAlex API\nbaseline window]
-    H --> I[topic_model_previous\nsame pipeline]
-    I --> J[compare_periods\nLLM: emerging vs disappeared topics\nnarrative summary]
-    J --> Z3([END — show dashboard])
+#### Core pipeline (runs once per query, fully cached)
 
-    subgraph Communication layer — runs per audience + platform
-        K([core result]) --> L[generate_followups\nLLM: 3 next questions]
-        L --> M[generate_social_content\nLLM: LinkedIn post / Instagram\ncarousel / Twitter thread]
-        M --> Z4([rendered draft])
-    end
 ```
+User query
+    │
+    ▼
+analyze_query ── not medical ──▶ [error]
+    │ medical
+    ▼
+create_plan
+(search focus, inclusion/exclusion criteria, evidence types to prioritise)
+    │
+    ▼
+set_periods
+(current window: last 3 months  |  baseline window: prior 6 months)
+    │
+    ▼
+fetch_current  ◀────────────────────────────┐
+(OpenAlex API → up to 500 papers            │
+ SBERT semantic rerank → top 200)           │
+    │                                       │
+    ▼                                   refine_search
+inspect_search_quality ── retry ──────────▶ (LLM rewrites keywords)
+    │ ok             insufficient
+    │                    │
+    ▼                    ▼
+topic_model_current   [warn user]
+(BERTopic + KMeans clustering
+ LLM merges near-duplicate topics,
+ filters irrelevant ones, summarises each)
+    │
+    ▼
+fetch_previous  →  topic_model_previous
+(same pipeline on 6-month baseline)
+    │
+    ▼
+compare_periods
+(LLM: emerging signals, disappeared signals, narrative)
+    │
+    ▼
+  Dashboard
+```
+
+#### Communication layer (runs per audience + platform, independently cached)
+
+```
+Core result  →  generate_followups  →  generate_social_content  →  Draft
+                (3 next questions)      (LinkedIn post /
+                                         Instagram carousel /
+                                         Twitter/X thread)
+```
+
+The full LangGraph diagram is saved in [`assets/langgraph_core_pipeline.mmd`](assets/langgraph_core_pipeline.mmd) — paste it into [mermaid.live](https://mermaid.live) to render it.
+
+---
 
 ### Screenshot
 
-> _Screenshot coming soon — add yours here_
+> _Add a screenshot here once the app is running_
+
+![TopicFlow screenshot placeholder](assets/screenshot.png)
+
+---
+
+### Tech stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) `StateGraph` with conditional edges |
+| Literature source | [OpenAlex](https://openalex.org) (open, free) |
+| Semantic reranking | [Sentence-Transformers](https://www.sbert.net) (`all-MiniLM-L6-v2`) |
+| Topic discovery | [BERTopic](https://maartengr.github.io/BERTopic/) with KMeans (deterministic, no UMAP) |
+| LLM calls | Any OpenAI-compatible endpoint (GLM, GPT-4, etc.) |
+| UI | [Streamlit](https://streamlit.io) |
+| Deployment | Docker → Hugging Face Spaces (auto-synced via GitHub Actions) |
+
+---
 
 ### Running locally
 
@@ -88,11 +156,14 @@ docker compose up --build
 | `TOPIC_MODEL_MAX_DOC_CHARS` | Max chars per abstract | 1200 |
 | `TOPIC_MODEL_EMBEDDING_MODEL` | SBERT model name | `all-MiniLM-L6-v2` |
 
+---
+
 ### TODO — future improvements
 
 - **Interactive follow-up chat** — let users drill into a topic with follow-up questions, keeping the LangGraph trace visible as context.
-- **LangGraph tracing / observability** — wire up LangSmith or another tracing backend so every node execution is inspectable.
-- **Richer UI** — charts for topic size over time, paper-count timelines, keyword clouds.
-- **More platforms** — Substack newsletter draft, slide deck outline, lay-audience summary.
-- **Domain expansion** — extend beyond medical queries to other scientific fields.
-- **Export** — download results as PDF or structured JSON for downstream workflows.
+- **LangGraph tracing / observability** — wire up LangSmith or another tracing backend so every node execution is inspectable in production.
+- **Richer UI** — topic size-over-time charts, paper-count timelines, keyword clouds.
+- **Export** — download results as PDF report or structured JSON for downstream workflows.
+- **More sources** — expand beyond OpenAlex to PubMed, bioRxiv, clinical trial registries.
+- **More platforms** — Substack newsletter draft, slide deck outline, lay-audience one-pager.
+- **Domain expansion** — extend the medical-query guard to support other scientific fields.

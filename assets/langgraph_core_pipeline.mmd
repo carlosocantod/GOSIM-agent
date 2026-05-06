@@ -1,0 +1,40 @@
+flowchart TD
+    START(["▶ User query"])
+
+    START --> analyze_query
+
+    subgraph core_graph ["Core pipeline  (cached per query)"]
+        analyze_query["analyze_query\nLLM classifies the query as medical/non-medical\nand extracts search keywords"]
+        create_plan["create_plan\nLLM writes a structured search plan:\nsearch focus, inclusion/exclusion criteria,\nevidence types to prioritise"]
+        set_periods["set_periods\nComputes date windows:\ncurrent = last 3 months\nbaseline = prior 6 months"]
+        fetch_current["fetch_current\nOpenAlex API — up to 500 papers\nfor the current window\nthen SBERT semantic rerank → top 200"]
+        inspect_search_quality["inspect_search_quality\nLLM audits result count and relevance\nDecision: ok / retry / insufficient"]
+        refine_search["refine_search\nLLM proposes revised keywords\nto improve recall"]
+        topic_model_current["topic_model_current\nBERTopic + KMeans clusters abstracts\nLLM merges near-duplicate topics,\nfilters irrelevant ones, summarises each"]
+        fetch_previous["fetch_previous\nSame OpenAlex + rerank pipeline\nfor the baseline window"]
+        topic_model_previous["topic_model_previous\nSame BERTopic pipeline on\nbaseline abstracts"]
+        compare_periods["compare_periods\nLLM compares current vs baseline topics:\nidentifies emerging and disappeared signals,\nwrites a narrative summary"]
+    end
+
+    analyze_query -->|"not medical"| END_NM(["✖ Show error"])
+    analyze_query -->|"medical"| create_plan
+    create_plan --> set_periods
+    set_periods --> fetch_current
+    fetch_current --> inspect_search_quality
+    inspect_search_quality -->|"retry"| refine_search
+    refine_search --> fetch_current
+    inspect_search_quality -->|"insufficient after retry"| END_INS(["⚠ Warn user"])
+    inspect_search_quality -->|"ok"| topic_model_current
+    topic_model_current --> fetch_previous
+    fetch_previous --> topic_model_previous
+    topic_model_previous --> compare_periods
+    compare_periods --> END_OK(["✔ Show dashboard"])
+
+    subgraph comm_graph ["Communication layer  (cached per audience + platform)"]
+        generate_followups["generate_followups\nLLM suggests 3 follow-up questions"]
+        generate_social["generate_social_content\nLLM drafts platform-specific content:\nLinkedIn post / Instagram carousel /\nTwitter/X thread"]
+    end
+
+    END_OK --> generate_followups
+    generate_followups --> generate_social
+    generate_social --> END_COMM(["✔ Render draft"])
