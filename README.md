@@ -21,9 +21,9 @@ Team members: Carlos Ocanto
 
 🚀 **Live demo:** [huggingface.co/spaces/carlosocantod/GOSIM-agent](https://huggingface.co/spaces/carlosocantod/GOSIM-agent)
 
-🎥  **YouTube:** [video](docs/GOSIM_Agent_TopicFlow_Presentation.pdf)
-
 👨🏻‍🏫  **Presentation:** [docs/TopicFlow-GOSIM-Agent-presentation.pdf](docs/GOSIM_Agent_TopicFlow_Presentation.pdf)
+
+🎥  **YouTube:** [video](https://www.youtube.com/watch?v=qMX0m2sEPPs)
 
 ---
 
