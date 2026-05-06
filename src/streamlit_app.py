@@ -9,6 +9,7 @@ from sentence_transformers import SentenceTransformer
 from src.utils.open_alex import OpenAlexWork
 from src.utils.research_agent import CommunicationResult
 from src.utils.research_agent import ResearchAgentResult
+from src.utils.research_agent import SocialMediaContent
 from src.utils.research_agent import run_communication_layer
 from src.utils.research_agent import run_core_pipeline
 from src.utils.topic_model_llm import EMBEDDING_MODEL_NAME
@@ -205,22 +206,48 @@ def render_period_comparison(
         render_topic_dashboard(previous_summaries, previous_assignments, previous_docs, key_prefix="prev")
 
 
+def render_social_content(sc: SocialMediaContent) -> None:
+    icon = _PLATFORM_ICONS.get(sc.platform, "")
+    st.subheader(f"{icon} {sc.platform} draft")
+    st.markdown(f"**{sc.headline}**")
+
+    if sc.platform == "LinkedIn":
+        st.markdown(sc.post)
+
+    elif sc.platform == "Twitter/X":
+        for i, tweet in enumerate(sc.tweets, 1):
+            with st.container(border=True):
+                st.markdown(f"**Tweet {i}** · {len(tweet)} chars")
+                st.write(tweet)
+
+    elif sc.platform == "Instagram":
+        st.caption("Carousel slides")
+        for i, slide in enumerate(sc.slides, 1):
+            with st.expander(f"Slide {i} — {slide.title}", expanded=True):
+                st.write(slide.body)
+        if sc.caption:
+            st.markdown(f"**Caption:** {sc.caption}")
+
+    if sc.hashtags:
+        st.caption(" ".join(f"#{h}" for h in sc.hashtags))
+    if sc.caution:
+        st.warning(f"**Caution:** {sc.caution}")
+
+
 def render_science_communication(comm: CommunicationResult) -> None:
-    if comm.recommendation:
+    if comm.social_content:
         st.divider()
-        st.subheader("Science communication angle")
-        st.markdown(f"### {comm.recommendation.headline}")
-        st.write(comm.recommendation.recommendation)
-        st.warning(f"**Caution:** {comm.recommendation.caution}")
-        st.info(f"**Audience framing:** {comm.recommendation.audience_angle}")
+        render_social_content(comm.social_content)
 
     if comm.followups:
-        with st.expander("Suggested next questions", expanded=True):
+        with st.expander("Suggested next questions", expanded=False):
             for question in comm.followups:
                 st.markdown(f"- {question}")
 
 
 _AUDIENCES = ["General public", "Patients", "Clinicians", "Researchers", "Policy makers", "Journalists"]
+_PLATFORMS = ["LinkedIn", "Instagram", "Twitter/X"]
+_PLATFORM_ICONS = {"LinkedIn": "💼", "Instagram": "📸", "Twitter/X": "🐦"}
 
 
 def _run_core_query(query: str) -> None:
@@ -250,12 +277,12 @@ def _run_core_query(query: str) -> None:
     st.session_state["core_result"] = result
 
 
-def _get_communication(core: ResearchAgentResult, audience: str) -> CommunicationResult:
+def _get_communication(core: ResearchAgentResult, audience: str, platform: str) -> CommunicationResult:
     url_base = os.getenv("URL_BASE", "")
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    cache_key = (core.query, audience, url_base, api_key, model)
+    cache_key = (core.query, audience, platform, url_base, api_key, model)
     cache = st.session_state.setdefault("_comm_cache", {})
 
     if cache_key in cache:
@@ -263,8 +290,12 @@ def _get_communication(core: ResearchAgentResult, audience: str) -> Communicatio
 
     client = OpenAI(base_url=url_base, api_key=api_key)
 
-    with st.spinner("Generating communication framing..."):
-        comm = run_communication_layer(core, audience, client, model)
+    with st.status("Generating communication draft...", expanded=False) as status:
+        comm = run_communication_layer(
+            core, audience, client, model,
+            platform=platform,
+            on_step=lambda msg: status.update(label=msg),
+        )
 
     cache[cache_key] = comm
     return comm
@@ -307,9 +338,13 @@ def main() -> None:
         st.divider()
         _, center, _ = st.columns([1, 2, 1])
         with center:
-            audience = st.selectbox("Science communication audience", _AUDIENCES, key="audience_selector")
+            col1, col2 = st.columns(2)
+            with col1:
+                audience = st.selectbox("Audience", _AUDIENCES, key="audience_selector")
+            with col2:
+                platform = st.selectbox("Platform", _PLATFORMS, key="platform_selector")
 
-        comm = _get_communication(core, audience)
+        comm = _get_communication(core, audience, platform)
         render_science_communication(comm)
     else:
         render_centered_message(

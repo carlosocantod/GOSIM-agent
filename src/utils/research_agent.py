@@ -53,11 +53,20 @@ class FollowupQuestions(BaseModel):
     questions: list[str]
 
 
-class CommunicationRecommendation(BaseModel):
+class InstagramSlide(BaseModel):
+    title: str
+    body: str
+
+
+class SocialMediaContent(BaseModel):
+    platform: str
     headline: str
-    recommendation: str
-    caution: str
-    audience_angle: str
+    post: str = ""
+    tweets: list[str] = Field(default_factory=list)
+    slides: list[InstagramSlide] = Field(default_factory=list)
+    caption: str = ""
+    caution: str = ""
+    hashtags: list[str] = Field(default_factory=list)
 
 
 class ResearchAgentResult(BaseModel):
@@ -79,14 +88,13 @@ class ResearchAgentResult(BaseModel):
     current_label: str = ""
     previous_label: str = ""
     followups: list[str] = Field(default_factory=list)
-    recommendation: CommunicationRecommendation | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 
 
 class CommunicationResult(BaseModel):
     followups: list[str] = Field(default_factory=list)
-    recommendation: CommunicationRecommendation | None = None
+    social_content: SocialMediaContent | None = None
 
 
 class ResearchAgentState(TypedDict, total=False):
@@ -122,7 +130,6 @@ class ResearchAgentState(TypedDict, total=False):
     previous_assignments: list[int]
     comparison: PeriodComparison
     followups: list[str]
-    recommendation: CommunicationRecommendation
     search_refinements: int
 
 
@@ -416,36 +423,83 @@ Rules:
     }
 
 
-def generate_recommendation_node(state: ResearchAgentState) -> ResearchAgentState:
-    system_prompt = """
-You are a biomedical science communication strategist.
-Based on topic-model outputs, recommend the strongest communication angle.
-Return ONLY JSON matching this schema:
-{
-  "headline": "string",
-  "recommendation": "string",
-  "caution": "string",
-  "audience_angle": "string"
-}
+_PLATFORM_PROMPTS: dict[str, str] = {
+    "LinkedIn": """
+You are a biomedical science communication expert writing for LinkedIn.
+Write a professional, engaging LinkedIn post (350-600 words) based on the topic model results.
 Rules:
-- Be accurate and cautious.
-- Do not claim clinical efficacy unless the topic summaries support it.
-- Mention uncertainty or limitations when appropriate.
-- Write for the selected audience.
-"""
+- Start with a compelling hook (1-2 sentences).
+- Cover the key research signals and what shifted vs. the baseline period.
+- Use short paragraphs (2-3 sentences max). Accessible but authoritative tone.
+- End with a reflection question or call to action.
+Return ONLY JSON:
+{"headline": "string (hook, max 20 words)", "post": "string (350-600 words)", "caution": "string (1 sentence on limitations)", "hashtags": ["string"]}
+""",
+    "Instagram": """
+You are a biomedical science communication expert creating an Instagram carousel.
+Design a 5-6 slide carousel based on the topic model results.
+Slide structure: slide 1 = bold hook; slides 2-4 = one key finding each; slide 5 = implications; slide 6 (optional) = call to action.
+Rules: each slide has a short title (3-7 words) and a body (2-4 sentences, simple language). Write for a general or patient audience.
+Return ONLY JSON:
+{"headline": "string (carousel title)", "slides": [{"title": "string", "body": "string"}], "caption": "string (50-100 word Instagram caption)", "caution": "string (1 sentence on limitations)", "hashtags": ["string"]}
+""",
+    "Twitter/X": """
+You are a biomedical science communication expert writing a Twitter/X thread.
+Create a 4-6 tweet thread based on the topic model results.
+Rules:
+- Tweet 1: strong hook ending with "🧵 Thread:".
+- Tweets 2-4: one key finding or insight per tweet.
+- Last tweet: summary or engagement question.
+- Each tweet must be under 280 characters.
+Return ONLY JSON:
+{"headline": "string (thread topic, max 15 words)", "tweets": ["string"], "caution": "string (1 sentence on limitations)", "hashtags": ["string"]}
+""",
+}
+
+
+def generate_social_content(
+    core: "ResearchAgentResult",
+    audience: str,
+    platform: str,
+    client: OpenAI,
+    model: str,
+) -> SocialMediaContent:
+    system_prompt = _PLATFORM_PROMPTS[platform]
     payload = {
-        "query": state["query"],
-        "audience": state.get("audience", "General public"),
-        "current_topics": [s.model_dump() for s in state.get("current_summaries", TopicSummaries(summaries=[])).summaries],
-        "comparison": state.get("comparison").model_dump() if state.get("comparison") else None,
+        "query": core.query,
+        "audience": audience,
+        "current_period": core.current_label,
+        "previous_period": core.previous_label,
+        "current_topics": [s.model_dump() for s in (core.current_summaries or TopicSummaries(summaries=[])).summaries],
+        "comparison": core.comparison.model_dump() if core.comparison else None,
     }
-    recommendation = CommunicationRecommendation.model_validate_json(
-        _json_chat(state["client"], state["model"], system_prompt, payload)
+    data = json.loads(_json_chat(client, model, system_prompt, payload))
+
+    if platform == "Instagram":
+        return SocialMediaContent(
+            platform=platform,
+            headline=data.get("headline", ""),
+            slides=[InstagramSlide(**s) for s in data.get("slides", [])],
+            caption=data.get("caption", ""),
+            caution=data.get("caution", ""),
+            hashtags=data.get("hashtags", []),
+        )
+    if platform == "Twitter/X":
+        return SocialMediaContent(
+            platform=platform,
+            headline=data.get("headline", ""),
+            tweets=data.get("tweets", []),
+            caution=data.get("caution", ""),
+            hashtags=data.get("hashtags", []),
+        )
+    # LinkedIn (default)
+    return SocialMediaContent(
+        platform=platform,
+        headline=data.get("headline", ""),
+        post=data.get("post", ""),
+        caution=data.get("caution", ""),
+        hashtags=data.get("hashtags", []),
     )
-    return {
-        "recommendation": recommendation,
-        "agent_steps": _step(state, "✅ Generated a science communication angle."),
-    }
 
 
 def route_after_analysis(state: ResearchAgentState) -> str:
@@ -581,6 +635,7 @@ def run_communication_layer(
     audience: str,
     client: OpenAI,
     model: str,
+    platform: str = "LinkedIn",
     on_step: Callable[[str], None] | None = None,
 ) -> CommunicationResult:
     state: ResearchAgentState = {
@@ -601,24 +656,12 @@ def run_communication_layer(
             on_step(steps[-1])
 
     run_node(generate_followups_node)
-    run_node(generate_recommendation_node)
+
+    if on_step:
+        on_step(f"✅ Drafting {platform} content...")
+    social_content = generate_social_content(core, audience, platform, client, model)
 
     return CommunicationResult(
         followups=state.get("followups", []),
-        recommendation=state.get("recommendation"),
+        social_content=social_content,
     )
-
-
-def run_research_agent(
-    query: str,
-    client: OpenAI,
-    model: str,
-    embedding_model: SentenceTransformer,
-    audience: str = "General public",
-    on_step: Callable[[str], None] | None = None,
-) -> ResearchAgentResult:
-    """Convenience wrapper: runs core pipeline then communication layer."""
-    core = run_core_pipeline(query, client, model, embedding_model, on_step=on_step)
-    comm = run_communication_layer(core, audience, client, model, on_step=on_step)
-    # Merge communication results back for callers that expect the old shape.
-    return core.model_copy(update={"followups": comm.followups, "recommendation": comm.recommendation})
