@@ -58,8 +58,12 @@ def last_n_months_date_range(n_months: int = 3, today: date | None = None) -> tu
     return first_day.isoformat(), today.isoformat()
 
 
-def previous_period_date_range(n_months: int = 3, today: date | None = None) -> tuple[str, str]:
-    current_from, _ = last_n_months_date_range(n_months, today)
+def previous_period_date_range(
+    n_months: int = 6,
+    today: date | None = None,
+    n_months_current: int = 3,
+) -> tuple[str, str]:
+    current_from, _ = last_n_months_date_range(n_months_current, today)
     last_day = date.fromisoformat(current_from) - timedelta(days=1)
     first_day = last_day.replace(day=1)
     for _ in range(n_months - 1):

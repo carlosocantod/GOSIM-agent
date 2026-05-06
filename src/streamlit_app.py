@@ -23,7 +23,8 @@ from src.utils.topic_model_llm import semantic_rerank
 
 load_dotenv()
 
-N_MONTHS = 3
+N_MONTHS_CURRENT = 3
+N_MONTHS_BASELINE = 6
 
 st.set_page_config(
     page_title="Medical Science Communication Helper Agent - GOSIM",
@@ -241,8 +242,8 @@ def run_query(query: str) -> None:
     api_key = os.getenv("LLM_API_KEY", "")
     model = os.getenv("LLM_MODEL", "glm-5")
 
-    curr_from, curr_to = last_n_months_date_range(N_MONTHS)
-    prev_from, prev_to = previous_period_date_range(N_MONTHS)
+    curr_from, curr_to = last_n_months_date_range(N_MONTHS_CURRENT)
+    prev_from, prev_to = previous_period_date_range(N_MONTHS_BASELINE, n_months_current=N_MONTHS_CURRENT)
     current_label = _format_period_label(curr_from, curr_to)
     previous_label = _format_period_label(prev_from, prev_to)
 
