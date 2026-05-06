@@ -59,6 +59,12 @@ class RelevantTopics(BaseModel):
     relevant_topic_ids: List[int]
 
 
+class PeriodComparison(BaseModel):
+    narrative: str
+    emerging_topic_labels: List[str]
+    disappeared_topic_labels: List[str]
+
+
 class TopicModelResult(BaseModel):
     summaries: TopicSummaries
     topic_assignments: List[int]
@@ -211,6 +217,48 @@ def filter_relevant_topics(
     result = RelevantTopics.model_validate_json(response.choices[0].message.content)
     relevant_ids = set(result.relevant_topic_ids)
     return [t for t in topics_payload if t.topic_id in relevant_ids]
+
+
+def compare_topic_periods(
+    current_summaries: "TopicSummaries",
+    previous_summaries: "TopicSummaries",
+    current_period_label: str,
+    previous_period_label: str,
+    client: OpenAI,
+    model: str,
+) -> PeriodComparison:
+    system_prompt = f"""
+You are a biomedical research analyst comparing two consecutive literature periods.
+
+Current period ({current_period_label}):
+{json.dumps([{"label": s.label, "summary": s.summary} for s in current_summaries.summaries], ensure_ascii=False)}
+
+Previous period ({previous_period_label}):
+{json.dumps([{"label": s.label, "summary": s.summary} for s in previous_summaries.summaries], ensure_ascii=False)}
+
+Your tasks:
+1. Write a concise narrative (3-5 sentences) comparing the two periods. What shifted? What is new? What faded?
+2. List the labels of current-period topics that have NO clear equivalent in the previous period — these are emerging topics.
+3. List the labels of previous-period topics that have NO clear equivalent in the current period — these disappeared.
+
+Be specific and use the actual topic labels. Do not invent new labels.
+
+Output ONLY a JSON object matching this schema:
+{{
+  "narrative": "string",
+  "emerging_topic_labels": ["string"],
+  "disappeared_topic_labels": ["string"]
+}}
+"""
+
+    response = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        messages=[{"role": "user", "content": system_prompt}],
+        response_format={"type": "json_object"},
+    )
+
+    return PeriodComparison.model_validate_json(response.choices[0].message.content)
 
 
 def semantic_rerank(

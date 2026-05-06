@@ -52,8 +52,19 @@ def reconstruct_abstract(abstract_inverted_index: dict[str, list[int]] | None) -
 
 def last_n_months_date_range(n_months: int = 3, today: date | None = None) -> tuple[str, str]:
     today = today or date.today()
-    first_of_this_month = today.replace(day=1)
-    last_day = first_of_this_month - timedelta(days=1)
+    first_day = today.replace(day=1)
+    for _ in range(n_months):
+        first_day = (first_day - timedelta(days=1)).replace(day=1)
+    return first_day.isoformat(), today.isoformat()
+
+
+def previous_period_date_range(
+    n_months: int = 6,
+    today: date | None = None,
+    n_months_current: int = 3,
+) -> tuple[str, str]:
+    current_from, _ = last_n_months_date_range(n_months_current, today)
+    last_day = date.fromisoformat(current_from) - timedelta(days=1)
     first_day = last_day.replace(day=1)
     for _ in range(n_months - 1):
         first_day = (first_day - timedelta(days=1)).replace(day=1)
@@ -66,18 +77,18 @@ def normalize_doi(raw_doi: str | None) -> str | None:
     return raw_doi.removeprefix("https://doi.org/")
 
 
-def get_openalex_papers_last_months(
+def _fetch_papers_for_period(
     keywords: str,
+    from_date: str,
+    to_date: str,
     limit: int = 200,
     mailto: str | None = None,
-    n_months: int = 3,
 ) -> list[OpenAlexWork]:
-    from_date, to_date = last_n_months_date_range(n_months=n_months)
     headers = {
         "User-Agent": f"openalex-keyword-script/1.0 ({mailto})" if mailto else "openalex-keyword-script/1.0"
     }
 
-    collected: list[dict[str, Any]] = []
+    collected: list[OpenAlexWork] = []
     cursor = "*"
     page_size = min(limit, 200)
 
@@ -119,6 +130,7 @@ def get_openalex_papers_last_months(
 
             if len(collected) >= limit:
                 break
+
         meta = payload.get("meta", {})
         next_cursor = meta.get("next_cursor")
         if not next_cursor or next_cursor == cursor:
@@ -126,6 +138,26 @@ def get_openalex_papers_last_months(
         cursor = next_cursor
 
     return collected[:limit]
+
+
+def get_openalex_papers_last_months(
+    keywords: str,
+    limit: int = 200,
+    mailto: str | None = None,
+    n_months: int = 3,
+) -> list[OpenAlexWork]:
+    from_date, to_date = last_n_months_date_range(n_months=n_months)
+    return _fetch_papers_for_period(keywords, from_date, to_date, limit, mailto)
+
+
+def get_openalex_papers_for_period(
+    keywords: str,
+    from_date: str,
+    to_date: str,
+    limit: int = 200,
+    mailto: str | None = None,
+) -> list[OpenAlexWork]:
+    return _fetch_papers_for_period(keywords, from_date, to_date, limit, mailto)
 
 def main():
     results = get_openalex_papers_last_months(keywords="pediatrics malaria")
