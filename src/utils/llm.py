@@ -92,6 +92,7 @@ def extract_medical_keywords(query: str) -> MedicalQueryAnalysis:
 
     response = client.chat.completions.create(
         model=model,
+        temperature=0,
         messages=[
             {
                 "role": "system",
